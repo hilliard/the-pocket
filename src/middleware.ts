@@ -3,8 +3,8 @@ import { verifySession } from './server/auth';
 
 export const onRequest = defineMiddleware(async ({ cookies, url, redirect, locals }, next) => {
   // 1. Intercept requests to protected paths
-  const isAdminPath = url.pathname.startsWith('/admin');
-  const isArtistPath = url.pathname.startsWith('/artist');
+  const isAdminPath = url.pathname.startsWith('/admin') || url.pathname.startsWith('/api/admin');
+  const isArtistPath = url.pathname.startsWith('/artist') || url.pathname.startsWith('/api/artist');
 
   if (isAdminPath || isArtistPath) {
     

@@ -1,0 +1,159 @@
+---
+import { query } from '../../../../server/db';
+import Header from '../../../../components/Header.astro';
+
+// Read session from Astro locals
+// @ts-ignore
+const session = Astro.locals.session;
+
+if (!session?.roles?.includes('artist')) {
+  return Astro.redirect('/login');
+}
+
+const { id: albumId } = Astro.params;
+
+// 1. Validate album belongs to artist
+const albumResult = await query(
+  `SELECT id, title, album_type FROM albums WHERE id = $1 AND artist_human_id = $2`,
+  [albumId, session.humanId]
+);
+
+if (albumResult.rows.length === 0) {
+  return new Response('Album Not Found', { status: 404 });
+}
+
+const album = albumResult.rows[0];
+
+// 2. Fetch current tracks
+const tracksResult = await query(
+  `SELECT s.id, s.title, s.duration_seconds 
+   FROM songs s
+   JOIN album_songs "as" ON s.id = "as".song_id
+   WHERE "as".album_id = $1
+   ORDER BY "as".track_number ASC`,
+  [albumId]
+);
+const tracks = tracksResult.rows;
+---
+
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Track Listing | The Pocket</title>
+    <meta name="viewport" content="width=device-width" />
+    <style is:inline>
+      :root { --color-accent-dynamic: #a855f7; }
+    </style>
+  </head>
+  <body class="bg-mono-950 text-mono-50 min-h-screen">
+    <Header />
+    <turbo-frame id="artist-modal">
+      <div class="fixed inset-0 z-50 flex items-center justify-center bg-mono-950/80 backdrop-blur-sm p-4 animate-in fade-in duration-200 overflow-y-auto">
+        <div class="bg-mono-900 border border-mono-800 rounded-3xl w-full max-w-2xl shadow-2xl relative my-8">
+      
+      <!-- Header -->
+      <div class="bg-mono-950/50 p-6 border-b border-mono-800 flex justify-between items-center sticky top-0 z-10 rounded-t-3xl">
+        <div>
+          <h2 class="text-xl font-black text-white">Track Listing: <span class="text-accent">{album.title}</span></h2>
+          <p class="text-xs text-mono-400 mt-1">Manage tracks for this {album.album_type.toUpperCase()}</p>
+        </div>
+        <a href="/artist/dashboard" data-turbo-frame="_top" class="flex items-center gap-2 text-mono-400 hover:text-white transition-colors text-sm font-bold bg-mono-950 py-2 px-4 rounded-full border border-mono-800">
+          <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+          </svg>
+          Back to Dashboard
+        </a>
+      </div>
+
+      <div class="p-6 flex flex-col gap-8">
+        
+        <!-- Current Track Listing -->
+        <div class="bg-mono-950 rounded-2xl border border-mono-800 p-4">
+          <h3 class="text-sm font-bold text-mono-300 mb-4 tracking-wide uppercase">Current Tracks ({tracks.length})</h3>
+          
+          {tracks.length === 0 ? (
+            <div class="text-center py-8 text-mono-500 border border-dashed border-mono-800 rounded-xl">
+              No tracks added yet. Upload your first song below!
+            </div>
+          ) : (
+            <ul class="flex flex-col gap-2">
+              {tracks.map((track, index) => (
+                <li class="flex items-center justify-between bg-mono-900 px-4 py-3 rounded-xl border border-mono-800">
+                  <div class="flex items-center gap-4">
+                    <span class="text-mono-500 font-mono text-sm w-4">{index + 1}</span>
+                    <span class="font-bold text-mono-50">{track.title}</span>
+                  </div>
+                  {track.duration_seconds && (
+                    <span class="text-mono-400 text-sm font-mono">{Math.floor(track.duration_seconds / 60)}:{String(track.duration_seconds % 60).padStart(2, '0')}</span>
+                  )}
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+
+        <!-- Add New Track Form -->
+        <div class="bg-mono-900 border border-accent/30 rounded-2xl p-6">
+          <h3 class="text-sm font-bold text-accent mb-4 tracking-wide uppercase">Add New Track</h3>
+          
+          <form method="POST" action="/api/artist/songs/create" enctype="multipart/form-data" class="flex flex-col gap-5">
+            <input type="hidden" name="albumId" value={album.id} />
+            
+            <div class="flex flex-col gap-2">
+              <label class="text-xs font-bold uppercase tracking-wider text-mono-400">Song Title</label>
+              <input type="text" name="title" class="w-full bg-mono-950 border border-mono-700 rounded-xl px-4 py-3 focus:border-accent outline-none text-white" required placeholder="e.g. Master Blaster" />
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div class="flex flex-col gap-2">
+                <label class="text-xs font-bold uppercase tracking-wider text-mono-400">Master Audio</label>
+                <input type="file" name="masterAudio" accept="audio/*" class="w-full bg-mono-950 border border-mono-700 rounded-xl px-4 py-2 focus:border-accent outline-none text-sm text-mono-400 file:mr-4 file:py-1.5 file:px-4 file:rounded-full file:border-0 file:text-xs file:font-bold file:bg-mono-800 file:text-mono-50 hover:file:bg-mono-700 transition-all cursor-pointer" required />
+              </div>
+              <div class="flex flex-col gap-2">
+                <label class="text-xs font-bold uppercase tracking-wider text-mono-400">30s Preview (Optional)</label>
+                <input type="file" name="previewAudio" accept="audio/*" class="w-full bg-mono-950 border border-mono-700 rounded-xl px-4 py-2 focus:border-accent outline-none text-sm text-mono-400 file:mr-4 file:py-1.5 file:px-4 file:rounded-full file:border-0 file:text-xs file:font-bold file:bg-accent file:text-mono-950 hover:file:brightness-110 transition-all cursor-pointer" />
+              </div>
+            </div>
+
+            <div class="grid grid-cols-2 gap-4">
+              <div class="flex flex-col gap-2">
+                <label class="text-xs font-bold uppercase tracking-wider text-mono-400">Duration (Sec)</label>
+                <input type="number" name="duration" class="w-full bg-mono-950 border border-mono-700 rounded-xl px-4 py-3 focus:border-accent outline-none font-mono text-white" placeholder="215" min="1" />
+              </div>
+              <div class="flex flex-col gap-2">
+                <label class="text-xs font-bold uppercase tracking-wider text-mono-400">BPM</label>
+                <input type="number" name="bpm" class="w-full bg-mono-950 border border-mono-700 rounded-xl px-4 py-3 focus:border-accent outline-none font-mono text-white" placeholder="120" min="1" />
+              </div>
+            </div>
+
+            <div class="flex flex-col gap-2">
+              <label class="text-xs font-bold uppercase tracking-wider text-mono-400">ISRC Code (Optional)</label>
+              <input type="text" name="isrc" class="w-full bg-mono-950 border border-mono-700 rounded-xl px-4 py-3 focus:border-accent outline-none font-mono text-sm text-white" placeholder="US-S1Z-99-00001" />
+            </div>
+
+            <div class="flex items-center gap-3 p-4 bg-mono-950 rounded-xl border border-mono-800">
+              <input type="checkbox" id="isExplicit" name="isExplicit" value="true" class="w-5 h-5 accent-accent" />
+              <label for="isExplicit" class="font-bold cursor-pointer text-sm text-white">Contains Explicit Lyrics</label>
+            </div>
+
+            <div class="mt-2 flex justify-end gap-3">
+              <button type="submit" class="bg-accent text-mono-950 px-6 py-3 rounded-xl font-bold hover:brightness-110 transition-colors flex items-center gap-2">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                  <path fill-rule="evenodd" d="M10 5a1 1 0 011 1v3h3a1 1 0 110 2h-3v3a1 1 0 11-2 0v-3H6a1 1 0 110-2h3V6a1 1 0 011-1z" clip-rule="evenodd" />
+                </svg>
+                Upload Track to Album
+              </button>
+            </div>
+          </form>
+        </div>
+
+        <div class="flex justify-center border-t border-mono-800 pt-6">
+          <a href="/artist/dashboard" data-turbo-frame="_top" class="px-8 py-3 bg-mono-800 text-white rounded-xl font-bold hover:bg-mono-700 transition-colors w-full text-center text-lg">
+            Done Editing Tracks
+          </a>
+        </div>
+
+      </div>
+    </div>
+  </div>
+</turbo-frame>

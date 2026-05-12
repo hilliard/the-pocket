@@ -106,49 +106,52 @@ if (sessionCookieHeader) {
 </header>
 
 <script is:inline>
-  // Script runs immediately to prevent flash of wrong theme
-  const savedTheme = localStorage.getItem('theme');
-  const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-  
-  if (savedTheme === 'light' || (!savedTheme && !prefersDark)) {
-    document.documentElement.setAttribute('data-theme', 'light');
-  } else {
-    document.documentElement.setAttribute('data-theme', 'dark');
-  }
-
-  document.addEventListener('turbo:load', setupThemeToggle);
-  document.addEventListener('DOMContentLoaded', setupThemeToggle);
-
-  function setupThemeToggle() {
-    const toggleBtn = document.getElementById('theme-toggle');
-    const darkIcon = document.querySelector('.dark-icon');
-    const lightIcon = document.querySelector('.light-icon');
+  {
+    // Script runs immediately to prevent flash of wrong theme
+    const savedTheme = localStorage.getItem('theme');
+    const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
     
-    if (!toggleBtn || !darkIcon || !lightIcon) return;
-
-    function updateIcons() {
-      if (document.documentElement.getAttribute('data-theme') === 'light') {
-        darkIcon.classList.add('hidden');
-        lightIcon.classList.remove('hidden');
-      } else {
-        lightIcon.classList.add('hidden');
-        darkIcon.classList.remove('hidden');
-      }
+    if (savedTheme === 'light' || (!savedTheme && !prefersDark)) {
+      document.documentElement.setAttribute('data-theme', 'light');
+    } else {
+      document.documentElement.setAttribute('data-theme', 'dark');
     }
 
-    updateIcons();
-
-    // Remove old listeners to prevent double-firing with Turbo
-    const newBtn = toggleBtn.cloneNode(true);
-    toggleBtn.parentNode.replaceChild(newBtn, toggleBtn);
-
-    newBtn.addEventListener('click', () => {
-      const currentTheme = document.documentElement.getAttribute('data-theme');
-      const newTheme = currentTheme === 'light' ? 'dark' : 'light';
+    function setupThemeToggle() {
+      const toggleBtn = document.getElementById('theme-toggle');
+      const darkIcon = document.querySelector('.dark-icon');
+      const lightIcon = document.querySelector('.light-icon');
       
-      document.documentElement.setAttribute('data-theme', newTheme);
-      localStorage.setItem('theme', newTheme);
+      if (!toggleBtn || !darkIcon || !lightIcon) return;
+
+      function updateIcons() {
+        if (document.documentElement.getAttribute('data-theme') === 'light') {
+          darkIcon.classList.add('hidden');
+          lightIcon.classList.remove('hidden');
+        } else {
+          lightIcon.classList.add('hidden');
+          darkIcon.classList.remove('hidden');
+        }
+      }
+
       updateIcons();
-    });
+
+      // Remove old listeners to prevent double-firing with Turbo
+      const newBtn = toggleBtn.cloneNode(true);
+      toggleBtn.parentNode.replaceChild(newBtn, toggleBtn);
+
+      newBtn.addEventListener('click', () => {
+        const currentTheme = document.documentElement.getAttribute('data-theme');
+        const newTheme = currentTheme === 'light' ? 'dark' : 'light';
+        
+        document.documentElement.setAttribute('data-theme', newTheme);
+        localStorage.setItem('theme', newTheme);
+        updateIcons();
+      });
+    }
+
+    document.addEventListener('turbo:load', setupThemeToggle);
+    document.addEventListener('DOMContentLoaded', setupThemeToggle);
+    setupThemeToggle(); // Run once immediately
   }
 </script>

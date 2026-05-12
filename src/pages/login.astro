@@ -8,6 +8,15 @@ const greeting = isReturning ? 'Welcome Back' : 'Sign In';
 
 // Dev bypass logic
 const isDev = import.meta.env.DEV;
+
+// Capture potential errors
+const errorParam = Astro.url.searchParams.get('error');
+let errorMessage = '';
+if (errorParam === 'invalid_credentials') {
+  errorMessage = 'Invalid username or password.';
+} else if (errorParam === 'missing_fields') {
+  errorMessage = 'Please fill out all fields.';
+}
 ---
 
 <html lang="en">
@@ -28,6 +37,12 @@ const isDev = import.meta.env.DEV;
           <h1 class="text-3xl font-black mb-2">{greeting}</h1>
           <p class="text-mono-400">Sign in to manage your storefront or orders.</p>
         </div>
+
+        {errorMessage && (
+          <div class="mb-6 p-4 rounded-xl bg-red-500/10 border border-red-500/30 text-red-400 text-sm text-center font-bold animate-in fade-in zoom-in-95 duration-200">
+            {errorMessage}
+          </div>
+        )}
 
         <form action="/api/auth/login" method="POST" data-turbo="false" class="flex flex-col gap-5">
           

@@ -16,23 +16,32 @@ export async function createMediaStructure({ humanIdShort, stageName, albumTitle
   const sanitizedArtistName = stageName.replace(/[^a-zA-Z0-9]/g, '');
   const artistPrefix = `${humanIdShort}-${sanitizedArtistName}`;
   
-  // Base media assets path (could also be pulled from an environment variable)
-  const baseMediaPath = path.resolve(process.cwd(), 'media_assets', 'artists', artistPrefix);
+  // Public assets (Served statically by Astro)
+  const publicMediaPath = path.resolve(process.cwd(), 'public', 'media_assets', 'artists', artistPrefix);
+  
+  // Private assets (Served securely via API)
+  const privateMediaPath = path.resolve(process.cwd(), 'private_assets', 'artists', artistPrefix);
 
   const pathsToCreate = [
-    path.join(baseMediaPath, 'profile'),
-    path.join(baseMediaPath, 'products', 'photos'),
-    path.join(baseMediaPath, 'products', 'videos'),
-    path.join(baseMediaPath, 'products', 'music', 'masters'),
-    path.join(baseMediaPath, 'products', 'music', 'previews')
+    // PUBLIC
+    path.join(publicMediaPath, 'profile'),
+    path.join(publicMediaPath, 'products', 'photos', 'low_res'),
+    path.join(publicMediaPath, 'products', 'photos', 'watermark'),
+    path.join(publicMediaPath, 'products', 'videos', 'thumbnails'),
+    path.join(publicMediaPath, 'products', 'music', 'previews'),
+    
+    // PRIVATE (Premium Content)
+    path.join(privateMediaPath, 'products', 'music', 'masters'),
+    path.join(privateMediaPath, 'products', 'photos', 'high_res'),
+    path.join(privateMediaPath, 'products', 'videos', 'source')
   ];
 
   // If an album title is provided, scaffold the specific album directory
   if (albumTitle) {
     // Basic sanitization for folder names
     const safeAlbumTitle = albumTitle.replace(/[\\/:*?"<>|]/g, '');
-    pathsToCreate.push(path.join(baseMediaPath, 'products', 'music', 'masters', safeAlbumTitle));
-    pathsToCreate.push(path.join(baseMediaPath, 'products', 'music', 'previews', safeAlbumTitle));
+    pathsToCreate.push(path.join(privateMediaPath, 'products', 'music', 'masters', safeAlbumTitle));
+    pathsToCreate.push(path.join(publicMediaPath, 'products', 'music', 'previews', safeAlbumTitle));
   }
 
   try {
@@ -40,7 +49,7 @@ export async function createMediaStructure({ humanIdShort, stageName, albumTitle
       await fs.mkdir(dir, { recursive: true });
     }
     console.log(`[MediaManager] Successfully verified/scaffolded structure for ${artistPrefix}`);
-    return { success: true, baseMediaPath };
+    return { success: true, publicMediaPath, privateMediaPath };
   } catch (error) {
     console.error(`[MediaManager] Failed to create structure for ${artistPrefix}:`, error);
     return { success: false, error };

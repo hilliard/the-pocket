@@ -141,8 +141,14 @@ const merch = merchResult.rows;
                         </div>
                         <p class="text-xs text-mono-500 mt-1">Released: {new Date(album.created_at).toLocaleDateString()}</p>
                       </div>
-                      <div class="text-right">
+                      <div class="text-right flex flex-col items-end gap-1">
                         <span class="block font-black text-accent">${(album.price_cents / 100).toFixed(2)}</span>
+                        <div class="flex items-center gap-3 mt-1">
+                          <form method="POST" action={`/api/artist/albums/${album.id}/delete`} onsubmit="confirmDelete(event, 'this album')">
+                            <button type="submit" class="text-xs text-red-500 hover:text-red-400 underline cursor-pointer">Delete</button>
+                          </form>
+                          <a href={`/artist/albums/${album.id}/tracks`} data-turbo-frame="artist-modal" class="text-xs text-mono-400 hover:text-white underline">Manage Tracks</a>
+                        </div>
                       </div>
                     </div>
                   ))}
@@ -163,8 +169,13 @@ const merch = merchResult.rows;
                         </div>
                         <p class="text-xs text-mono-500 mt-1">Added: {new Date(song.created_at).toLocaleDateString()}</p>
                       </div>
-                      <div class="text-right">
+                      <div class="text-right flex flex-col items-end gap-1">
                         <span class="block font-black text-accent">${(song.price_cents / 100).toFixed(2)}</span>
+                        <div class="flex items-center gap-3 mt-1">
+                          <form method="POST" action={`/api/artist/songs/${song.id}/delete`} onsubmit="confirmDelete(event, 'this track')">
+                            <button type="submit" class="text-xs text-red-500 hover:text-red-400 underline cursor-pointer">Delete</button>
+                          </form>
+                        </div>
                       </div>
                     </div>
                   ))}
@@ -219,5 +230,58 @@ const merch = merchResult.rows;
 
       </div>
     </main>
+
+    <!-- Custom Confirm Dialog -->
+    <dialog id="deleteConfirmDialog" class="bg-transparent p-0 backdrop:bg-mono-950/80 backdrop:backdrop-blur-sm open:animate-in open:fade-in open:zoom-in-95 duration-200 m-auto">
+      <div class="bg-mono-900 border border-mono-800 rounded-3xl w-full max-w-sm shadow-2xl p-6 text-center">
+        <div class="w-16 h-16 bg-red-500/10 rounded-full flex items-center justify-center mx-auto mb-4 border border-red-500/20 text-red-500">
+          <svg xmlns="http://www.w3.org/2000/svg" class="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+          </svg>
+        </div>
+        <h3 class="text-xl font-black text-mono-50 mb-2">Are you sure?</h3>
+        <p class="text-mono-400 text-sm mb-6">You are about to delete <span id="deleteItemName" class="font-bold text-mono-300">this item</span>. This action cannot be undone.</p>
+        <div class="flex gap-3 justify-center">
+          <button type="button" onclick="closeConfirmDialog()" class="px-6 py-3 bg-mono-800 text-white rounded-xl font-bold hover:bg-mono-700 transition-colors w-1/2">
+            Cancel
+          </button>
+          <button type="button" id="confirmDeleteBtn" class="px-6 py-3 bg-red-500 text-white rounded-xl font-bold hover:bg-red-600 transition-colors w-1/2">
+            Delete
+          </button>
+        </div>
+      </div>
+    </dialog>
+
+    <script is:inline>
+      {
+        let pendingForm = null;
+        const dialog = document.getElementById('deleteConfirmDialog');
+        const itemNameSpan = document.getElementById('deleteItemName');
+        const confirmBtn = document.getElementById('confirmDeleteBtn');
+
+        window.confirmDelete = function(event, itemName) {
+          event.preventDefault(); // Stop native submission
+          pendingForm = event.target;
+          itemNameSpan.textContent = itemName;
+          dialog.showModal();
+        };
+
+        window.closeConfirmDialog = function() {
+          dialog.close();
+          pendingForm = null;
+        };
+
+        // Remove old listeners to prevent duplicates on Turbo reloads
+        const newConfirmBtn = confirmBtn.cloneNode(true);
+        confirmBtn.parentNode.replaceChild(newConfirmBtn, confirmBtn);
+
+        newConfirmBtn.addEventListener('click', () => {
+          if (pendingForm) {
+            // Submit the form
+            pendingForm.submit();
+          }
+        });
+      }
+    </script>
   </body>
 </html>

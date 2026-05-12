@@ -10,7 +10,7 @@ export const POST: APIRoute = async ({ request, cookies, redirect }) => {
     const password = formData.get('password')?.toString();
 
     if (!username || !password) {
-      return new Response('Username and password are required', { status: 400 });
+      return redirect('/login?error=missing_fields');
     }
 
     // 1. Fetch user from DB
@@ -26,7 +26,7 @@ export const POST: APIRoute = async ({ request, cookies, redirect }) => {
     );
 
     if (userResult.rows.length === 0) {
-      return new Response('Invalid credentials or inactive account', { status: 401 });
+      return redirect('/login?error=invalid_credentials');
     }
 
     const user = userResult.rows[0];
@@ -34,7 +34,7 @@ export const POST: APIRoute = async ({ request, cookies, redirect }) => {
     // 2. Verify password hash
     const isValid = await bcrypt.compare(password, user.password_hash);
     if (!isValid) {
-      return new Response('Invalid credentials', { status: 401 });
+      return redirect('/login?error=invalid_credentials');
     }
 
     // 3. Generate JWT Session Token

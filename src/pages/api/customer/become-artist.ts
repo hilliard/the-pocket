@@ -2,6 +2,8 @@ import type { APIRoute } from 'astro';
 import { query } from '../../../server/db';
 import { verifySession, createSession } from '../../../server/auth';
 
+import { createMediaStructure } from '../../../tools/createMediaStructure';
+
 export const POST: APIRoute = async ({ cookies, redirect }) => {
   try {
     const sessionCookie = cookies.get('pocket_session')?.value;
@@ -41,6 +43,12 @@ export const POST: APIRoute = async ({ cookies, redirect }) => {
        ON CONFLICT (human_id) DO NOTHING`,
       [humanId, finalSlug, stageName]
     );
+
+    // Scaffold the media directories instantly for the new artist!
+    await createMediaStructure({
+      humanIdShort: humanId.split('-')[0], // e.g. 48cfc0f6
+      stageName: stageName
+    });
 
     // 4. Assign the 'artist' role
     const roleCheck = await query(`SELECT id FROM site_roles WHERE role_name = 'artist'`);

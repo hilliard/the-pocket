@@ -24,7 +24,7 @@ const genreQuery = genreParam.trim() ? `%${genreParam}%` : null;
 // Localized Search Query across the specific artist's product types
 const searchResult = await query(`
   SELECT * FROM (
-    SELECT 'album' as type, a.album_type, a.id, a.title, a.price_cents, a.genre, a.cover_url as image_url, a.created_at
+    SELECT 'album' as type, a.album_type, a.id, a.title, a.price_cents, a.genre, a.cover_url as image_url, a.created_at, NULL as preview_audio_url
     FROM albums a
     WHERE a.artist_human_id = $1
       AND ($2::text IS NULL OR a.title ILIKE $2) 
@@ -32,7 +32,7 @@ const searchResult = await query(`
     
     UNION ALL
 
-    SELECT 'song' as type, 'song' as album_type, s.id, s.title, s.individual_price_cents as price_cents, s.genre, NULL as image_url, s.created_at
+    SELECT 'song' as type, 'song' as album_type, s.id, s.title, s.individual_price_cents as price_cents, s.genre, NULL as image_url, s.created_at, s.preview_audio_url
     FROM songs s
     WHERE s.artist_human_id = $1
       AND ($2::text IS NULL OR s.title ILIKE $2) 
@@ -40,7 +40,7 @@ const searchResult = await query(`
 
     UNION ALL
 
-    SELECT 'merch' as type, 'merch' as album_type, m.id, m.title, m.price_cents, NULL as genre, m.image_url, m.created_at
+    SELECT 'merch' as type, 'merch' as album_type, m.id, m.title, m.price_cents, NULL as genre, m.image_url, m.created_at, NULL as preview_audio_url
     FROM merch m
     WHERE m.artist_human_id = $1
       AND ($2::text IS NULL OR m.title ILIKE $2) 
@@ -175,12 +175,27 @@ const availableGenres = genresResult.rows.map(r => r.genre);
                 <div class="p-5">
                   <h3 class="font-black text-lg mb-1 truncate group-hover:text-accent transition-colors">{item.title}</h3>
                   
-                  <div class="flex items-center justify-between mt-4">
+                  <div class="flex items-center justify-between mt-4 mb-4">
                     {item.genre ? (
                       <span class="text-xs text-mono-500 border border-mono-700 px-2 py-0.5 rounded bg-mono-950">{item.genre}</span>
                     ) : <span></span>}
                     <span class="font-black text-xl">${(item.price_cents / 100).toFixed(2)}</span>
                   </div>
+
+                  {item.type === 'song' && (
+                    <div class="mb-4">
+                      {item.preview_audio_url ? (
+                        <audio controls controlslist="nodownload" class="w-full h-8 rounded-full bg-mono-950 border border-mono-800">
+                          <source src={item.preview_audio_url} type="audio/mpeg" />
+                          Your browser does not support the audio element.
+                        </audio>
+                      ) : (
+                        <div class="w-full h-8 flex items-center justify-center text-xs font-bold text-mono-500 bg-mono-950 border border-mono-800 rounded-full">
+                          Preview Unavailable
+                        </div>
+                      )}
+                    </div>
+                  )}
 
                   <turbo-frame id={`cart_frame_${item.type}_${item.id}`}>
                     <form method="POST" action="/api/cart/add">

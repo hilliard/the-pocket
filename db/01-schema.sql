@@ -152,6 +152,8 @@ CREATE TABLE songs (
     is_explicit BOOLEAN DEFAULT false,
     genre VARCHAR(100),
     individual_price_cents INTEGER DEFAULT 99,
+    master_audio_path VARCHAR(1024),
+    preview_audio_url VARCHAR(1024),
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
