@@ -1,0 +1,204 @@
+---
+// Server-Side Fetch & Logic Layer
+import { getArtistBySlug } from '../../../../../tools/getArtistBySlug';
+import { query } from '../../../../../server/db';
+import Header from '../../../../../components/Header.astro';
+import '../../../../../styles/global.css';
+
+const { slug } = Astro.params;
+const artist = await getArtistBySlug(slug as string);
+
+if (!artist) {
+  return Astro.redirect('/clients/public');
+}
+
+const artistName = artist.name;
+const accentColor = artist.accent_color_hex || '#3b82f6';
+
+const q = Astro.url.searchParams.get('q') || '';
+const genreParam = Astro.url.searchParams.get('genre') || '';
+
+const searchQuery = q.trim() ? `%${q}%` : null;
+const genreQuery = genreParam.trim() ? `%${genreParam}%` : null;
+
+// Localized Search Query across the specific artist's product types
+const searchResult = await query(`
+  SELECT * FROM (
+    SELECT 'album' as type, a.album_type, a.id, a.title, a.price_cents, a.genre, a.cover_url as image_url, a.created_at
+    FROM albums a
+    WHERE a.artist_human_id = $1
+      AND ($2::text IS NULL OR a.title ILIKE $2) 
+      AND ($3::text IS NULL OR a.genre ILIKE $3)
+    
+    UNION ALL
+
+    SELECT 'song' as type, 'song' as album_type, s.id, s.title, s.individual_price_cents as price_cents, s.genre, NULL as image_url, s.created_at
+    FROM songs s
+    WHERE s.artist_human_id = $1
+      AND ($2::text IS NULL OR s.title ILIKE $2) 
+      AND ($3::text IS NULL OR s.genre ILIKE $3)
+
+    UNION ALL
+
+    SELECT 'merch' as type, 'merch' as album_type, m.id, m.title, m.price_cents, NULL as genre, m.image_url, m.created_at
+    FROM merch m
+    WHERE m.artist_human_id = $1
+      AND ($2::text IS NULL OR m.title ILIKE $2) 
+      AND ($3::text IS NULL OR $3::text = '')
+  ) as combined_catalog
+  ORDER BY created_at DESC
+  LIMIT 50
+`, [artist.id, searchQuery, genreQuery]);
+
+const products = searchResult.rows;
+
+// Fetch unique genres for this artist for the quick-filter pills
+const genresResult = await query(`
+  SELECT DISTINCT genre FROM (
+    SELECT genre FROM albums WHERE artist_human_id = $1 AND genre IS NOT NULL AND genre != ''
+    UNION
+    SELECT genre FROM songs WHERE artist_human_id = $1 AND genre IS NOT NULL AND genre != ''
+  ) as all_genres
+  ORDER BY genre ASC LIMIT 8
+`, [artist.id]);
+const availableGenres = genresResult.rows.map(r => r.genre);
+---
+
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <meta name="viewport" content="width=device-width" />
+    <meta name="generator" content={Astro.generator} />
+    <title>{artistName} | Me-Commerce Store</title>
+    
+    <!-- CSS Custom Property Injection (Dynamic Tailwind Integration) -->
+    <style is:inline set:html={`
+      :root {
+        --color-accent-dynamic: ${accentColor};
+      }
+    `} />
+    <script>
+      import "@hotwired/turbo";
+    </script>
+  </head>
+  <body class="bg-mono-950 text-mono-50 min-h-screen">
+    
+    <Header artistSlug={slug as string} artistName={artistName} />
+
+    <main class="max-w-6xl mx-auto px-6 py-12">
+      
+      <!-- Artist Store Header -->
+      <div class="flex items-center gap-6 mb-12">
+        <div class="w-20 h-20 rounded-full border-2 relative overflow-hidden shrink-0 flex items-center justify-center bg-mono-900 text-mono-600 text-3xl font-black uppercase" style={`border-color: ${accentColor}`}>
+          {artistName.charAt(0)}
+        </div>
+        <div>
+          <h1 class="text-4xl font-black">{artistName}'s Store</h1>
+          <p class="text-mono-400 mt-1">Directly support the artist by purchasing here.</p>
+        </div>
+      </div>
+
+      <!-- Search & Filters -->
+      <div class="bg-mono-900 border border-mono-800 p-6 rounded-3xl shadow-xl mb-12">
+        <form method="GET" action={`/clients/artists/${slug}/me-commerce`} data-turbo-frame="artist-product-grid" class="flex flex-col md:flex-row gap-4">
+          
+          <div class="flex-1 relative">
+            <div class="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none text-mono-500">
+              <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                <path fill-rule="evenodd" d="M8 4a4 4 0 100 8 4 4 0 000-8zM2 8a6 6 0 1110.89 3.476l4.817 4.817a1 1 0 01-1.414 1.414l-4.816-4.816A6 6 0 012 8z" clip-rule="evenodd" />
+              </svg>
+            </div>
+            <input 
+              type="search" 
+              name="q" 
+              value={q} 
+              placeholder={`Search ${artistName}'s catalog...`} 
+              class="w-full bg-mono-950 border border-mono-700 rounded-xl pl-12 pr-4 py-4 focus:border-accent outline-none shadow-inner"
+              onchange="this.form.requestSubmit()"
+            />
+          </div>
+          
+          {availableGenres.length > 0 && (
+            <div class="flex gap-2 shrink-0 overflow-x-auto pb-2 md:pb-0 items-center scrollbar-hide">
+              <button type="submit" name="genre" value="" class={`px-4 py-3 text-sm rounded-xl font-bold whitespace-nowrap transition-colors ${!genreParam ? 'bg-accent text-mono-950' : 'bg-mono-950 border border-mono-700 text-mono-300 hover:bg-mono-800'}`}>
+                All
+              </button>
+              {availableGenres.map((g: string) => (
+                <button type="submit" name="genre" value={g} class={`px-4 py-3 text-sm rounded-xl font-bold whitespace-nowrap transition-colors ${genreParam === g ? 'bg-accent text-mono-950' : 'bg-mono-950 border border-mono-700 text-mono-300 hover:bg-mono-800'}`}>
+                  {g}
+                </button>
+              ))}
+            </div>
+          )}
+
+        </form>
+      </div>
+
+      <!-- Turbo Frame for local artist search results -->
+      <turbo-frame id="artist-product-grid">
+        
+        {products.length === 0 ? (
+          <div class="text-center py-24 border border-dashed border-mono-700 rounded-3xl">
+            <span class="text-6xl mb-4 opacity-50 block">📭</span>
+            <h3 class="text-2xl font-black mb-2">No results found</h3>
+            <p class="text-mono-400">Try adjusting your search terms.</p>
+          </div>
+        ) : (
+          <div class="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-6">
+            {products.map((item: any) => (
+              <div class="group bg-mono-900 border border-mono-800 rounded-3xl overflow-hidden hover:border-mono-600 transition-all shadow-lg block relative">
+                
+                <!-- Image Area -->
+                <div class="aspect-square bg-mono-950 relative overflow-hidden">
+                  {item.image_url ? (
+                    <img src={item.image_url} alt={item.title} class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
+                  ) : (
+                    <div class="w-full h-full flex items-center justify-center bg-gradient-to-br from-mono-800 to-mono-950">
+                      <span class="text-6xl opacity-20">{item.type === 'song' ? '🎵' : '📦'}</span>
+                    </div>
+                  )}
+                  
+                  <!-- Badge -->
+                  <div class="absolute top-4 left-4">
+                    <span class={`px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest shadow-xl
+                      ${item.type === 'album' ? 'bg-purple-500/90 text-white backdrop-blur-md' : 
+                        item.type === 'song' ? 'bg-blue-500/90 text-white backdrop-blur-md' : 
+                        'bg-orange-500/90 text-white backdrop-blur-md'}`}
+                    >
+                      {item.type === 'album' ? item.album_type : item.type}
+                    </span>
+                  </div>
+                </div>
+
+                <!-- Details -->
+                <div class="p-5">
+                  <h3 class="font-black text-lg mb-1 truncate group-hover:text-accent transition-colors">{item.title}</h3>
+                  
+                  <div class="flex items-center justify-between mt-4">
+                    {item.genre ? (
+                      <span class="text-xs text-mono-500 border border-mono-700 px-2 py-0.5 rounded bg-mono-950">{item.genre}</span>
+                    ) : <span></span>}
+                    <span class="font-black text-xl">${(item.price_cents / 100).toFixed(2)}</span>
+                  </div>
+
+                  <turbo-frame id={`cart_frame_${item.type}_${item.id}`}>
+                    <form method="POST" action="/api/cart/add">
+                      <input type="hidden" name="itemId" value={item.id} />
+                      <input type="hidden" name="itemType" value={item.type} />
+                      <button type="submit" class="w-full mt-4 bg-mono-800 hover:bg-mono-700 active:scale-[0.98] active:bg-mono-600 text-mono-50 font-bold py-2 rounded-xl transition-all text-sm border border-mono-700 flex items-center justify-center gap-2">
+                        Add to Cart
+                      </button>
+                    </form>
+                  </turbo-frame>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+      </turbo-frame>
+    </main>
+    
+  </body>
+</html>

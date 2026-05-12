@@ -1,0 +1,138 @@
+---
+import Header from '../../components/Header.astro';
+import { query } from '../../server/db';
+import '../../styles/global.css';
+
+// Read session from Astro locals (injected by middleware)
+// @ts-ignore
+const session = Astro.locals.session;
+
+// Fetch system stats for the dashboard
+const statsResult = await query(`
+  SELECT 
+    (SELECT COUNT(*) FROM humans) as total_users,
+    (SELECT COUNT(*) FROM artists) as total_artists,
+    (SELECT COUNT(*) FROM albums) as total_albums,
+    (SELECT COUNT(*) FROM orders) as total_orders
+`);
+const stats = statsResult.rows[0];
+
+// Fetch recent users for the "User Management" section as requested in admin-usage.md
+const usersResult = await query(`
+  SELECT h.id, h.first_name, h.last_name, c.username,
+    (SELECT STRING_AGG(sr.role_name, ', ') 
+     FROM human_site_roles hsr 
+     JOIN site_roles sr ON hsr.site_role_id = sr.id 
+     WHERE hsr.human_id = h.id) as roles
+  FROM humans h
+  LEFT JOIN customers c ON h.id = c.human_id
+  ORDER BY h.created_at DESC LIMIT 10
+`);
+const recentUsers = usersResult.rows;
+---
+
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Admin Dashboard | The Pocket</title>
+    <meta name="viewport" content="width=device-width" />
+    <style is:inline>
+      :root { --color-accent-dynamic: #ef4444; /* Admin Red */ }
+    </style>
+  </head>
+  <body class="bg-mono-950 text-mono-50 min-h-screen selection:bg-accent selection:text-mono-950">
+    <Header />
+    <turbo-frame id="modal"></turbo-frame>
+
+    <main class="max-w-6xl mx-auto px-6 py-12">
+      
+      <div class="flex items-center justify-between mb-12">
+        <div>
+          <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-red-500/10 border border-red-500/30 text-xs font-bold text-red-500 mb-4">
+             <span class="relative flex h-2 w-2">
+              <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
+              <span class="relative inline-flex rounded-full h-2 w-2 bg-red-500"></span>
+            </span>
+            SYSTEM ADMINISTRATOR
+          </div>
+          <h1 class="text-4xl font-black">Welcome back, {session?.username}</h1>
+          <p class="text-mono-400 mt-2">You have full structural control over The Pocket infrastructure.</p>
+        </div>
+        
+        <form action="/api/auth/logout" method="POST">
+          <button type="submit" class="px-6 py-2 border border-mono-700 hover:border-mono-500 rounded-full font-medium transition-colors">
+            Sign Out
+          </button>
+        </form>
+      </div>
+
+      <!-- Quick Stats -->
+      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-12">
+        {[
+          { label: 'Total Humans', val: stats.total_users },
+          { label: 'Active Artists', val: stats.total_artists },
+          { label: 'Catalog Albums', val: stats.total_albums },
+          { label: 'System Orders', val: stats.total_orders },
+        ].map(stat => (
+          <div class="p-6 bg-mono-900 border border-mono-800 rounded-2xl flex flex-col gap-2">
+            <span class="text-mono-400 text-sm font-bold uppercase tracking-wider">{stat.label}</span>
+            <span class="text-3xl font-black">{stat.val}</span>
+          </div>
+        ))}
+      </div>
+
+      <!-- User Management (From admin-usage.md) -->
+      <section class="bg-mono-900 border border-mono-800 rounded-2xl overflow-hidden">
+        <div class="p-6 border-b border-mono-800 flex justify-between items-center bg-mono-900/50">
+          <h2 class="text-xl font-bold">Recent Users</h2>
+          <div class="relative">
+            <input type="text" placeholder="Search humans..." class="bg-mono-950 border border-mono-700 rounded-lg pl-10 pr-4 py-2 text-sm focus:border-accent outline-none" />
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 absolute left-3 top-2.5 text-mono-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+            </svg>
+          </div>
+        </div>
+
+        <div class="overflow-x-auto">
+          <table class="w-full text-left border-collapse">
+            <thead>
+              <tr class="bg-mono-950/50 text-xs uppercase tracking-wider text-mono-400 border-b border-mono-800">
+                <th class="p-4 font-bold">Human ID</th>
+                <th class="p-4 font-bold">Name</th>
+                <th class="p-4 font-bold">Username</th>
+                <th class="p-4 font-bold">Roles</th>
+                <th class="p-4 font-bold text-right">Action</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-mono-800">
+              {recentUsers.map(user => (
+                <tr class="hover:bg-mono-800/30 transition-colors">
+                  <td class="p-4 font-mono text-xs text-mono-500">{user.id.split('-')[0]}...</td>
+                  <td class="p-4 font-bold">{user.first_name} {user.last_name}</td>
+                  <td class="p-4 text-mono-300">@{user.username || 'N/A'}</td>
+                  <td class="p-4">
+                    <div class="flex gap-2">
+                      {(user.roles || '').split(', ').map((role: string) => role ? (
+                        <span class={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${
+                          role === 'admin' ? 'bg-red-500/20 text-red-400' : 
+                          role === 'artist' ? 'bg-purple-500/20 text-purple-400' : 
+                          'bg-mono-800 text-mono-300'
+                        }`}>
+                          {role}
+                        </span>
+                      ) : null)}
+                    </div>
+                  </td>
+                  <td class="p-4 text-right">
+                    <a href={`/admin/users/${user.id}/edit`} data-turbo-frame="modal" class="text-sm font-bold text-accent hover:text-white transition-colors">Edit</a>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+    </main>
+  </body>
+</html>

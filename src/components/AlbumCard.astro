@@ -1,0 +1,61 @@
+---
+export interface Props {
+  title: string;
+  artistName: string;
+  artistSlug: string;
+  price: string;
+  albumCoverUrl: string;
+  genre: string;
+  albumId: string;
+}
+
+const { title, artistName, artistSlug, price, albumCoverUrl, genre, albumId } = Astro.props;
+---
+
+<div class="bg-mono-900 border border-mono-800 rounded-xl overflow-hidden shadow-lg w-full max-w-sm flex flex-col transition-all hover:border-mono-600">
+  <a href={`/clients/artists/${artistSlug}/me-commerce/${albumId}`} class="block aspect-square w-full bg-mono-800 relative group cursor-pointer">
+    {/* Album Cover Placeholder */}
+    {albumCoverUrl ? (
+      <img src={albumCoverUrl} alt={`Cover for ${title}`} class="object-cover w-full h-full opacity-90 group-hover:opacity-100 group-hover:scale-105 transition-all duration-300" />
+    ) : (
+      <div class="absolute inset-0 flex items-center justify-center text-mono-500 group-hover:scale-105 transition-transform">
+        <svg xmlns="http://www.w3.org/2000/svg" class="h-16 w-16" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3" />
+        </svg>
+      </div>
+    )}
+  </a>
+  
+  <div class="p-5 flex flex-col gap-4 flex-1 justify-between">
+    <div class="flex justify-between items-start">
+      <a href={`/clients/artists/${artistSlug}/me-commerce/${albumId}`} class="block group">
+        <h3 class="text-xl font-bold text-mono-50 group-hover:text-accent transition-colors">{title}</h3>
+        <p class="text-mono-400 text-sm mt-1">{artistName}</p>
+      </a>
+      <span class="bg-accent/10 text-accent text-xs font-semibold px-2.5 py-0.5 rounded-full border border-accent/20">
+        {genre}
+      </span>
+    </div>
+    
+    <div class="flex items-center justify-between mt-2">
+      <span class="text-2xl font-bold text-mono-50">${price}</span>
+      
+      {/* Hotwire-powered Add to Cart */}
+      <turbo-frame id={`cart_frame_album_${albumId}`}>
+        <form method="POST" action={`/api/cart/add`}>
+          <input type="hidden" name="itemId" value={albumId} />
+          <input type="hidden" name="itemType" value="album" />
+          <button 
+            type="submit" 
+            class="bg-accent hover:brightness-110 text-mono-950 font-bold py-2 px-4 rounded-lg transition-all active:scale-95 flex items-center gap-2 cursor-pointer"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+              <path d="M3 1a1 1 0 000 2h1.22l.305 1.222a.997.997 0 00.01.042l1.358 5.43-.893.892C3.74 11.846 4.632 14 6.414 14H15a1 1 0 000-2H6.414l1-1H14a1 1 0 00.894-.553l3-6A1 1 0 0017 3H6.28l-.31-1.243A1 1 0 005 1H3zM16 16.5a1.5 1.5 0 11-3 0 1.5 1.5 0 013 0zM6.5 18a1.5 1.5 0 100-3 1.5 1.5 0 000 3z" />
+            </svg>
+            Add to Cart
+          </button>
+        </form>
+      </turbo-frame>
+    </div>
+  </div>
+</div>

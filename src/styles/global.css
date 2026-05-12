@@ -1,0 +1,61 @@
+@import "tailwindcss";
+
+@theme {
+  /* Mono Document Design System */
+  --font-mono: "ui-monospace", "SFMono-Regular", "Menlo", "Monaco", "Consolas", "Liberation Mono", "Courier New", monospace;
+  
+  --color-mono-50: var(--th-mono-50);
+  --color-mono-100: var(--th-mono-100);
+  --color-mono-200: var(--th-mono-200);
+  --color-mono-300: var(--th-mono-300);
+  --color-mono-400: var(--th-mono-400);
+  --color-mono-500: var(--th-mono-500);
+  --color-mono-600: var(--th-mono-600);
+  --color-mono-700: var(--th-mono-700);
+  --color-mono-800: var(--th-mono-800);
+  --color-mono-900: var(--th-mono-900);
+  --color-mono-950: var(--th-mono-950);
+  
+  /* Dynamic Accent Color mapping (Phase 4 requirement) */
+  --color-accent: var(--color-accent-dynamic, #3b82f6);
+}
+
+@layer base {
+  /* Default Theme (Dark) */
+  :root, :root[data-theme="dark"] {
+    color-scheme: dark;
+    --th-mono-50: #f8fafc;
+    --th-mono-100: #f1f5f9;
+    --th-mono-200: #e2e8f0;
+    --th-mono-300: #cbd5e1;
+    --th-mono-400: #94a3b8;
+    --th-mono-500: #64748b;
+    --th-mono-600: #475569;
+    --th-mono-700: #334155;
+    --th-mono-800: #1e293b;
+    --th-mono-900: #0f172a;
+    --th-mono-950: #020617;
+  }
+
+  /* Light Theme Inversion */
+  :root[data-theme="light"] {
+    color-scheme: light;
+    --th-mono-50: #020617;
+    --th-mono-100: #0f172a;
+    --th-mono-200: #1e293b;
+    --th-mono-300: #334155;
+    --th-mono-400: #475569;
+    --th-mono-500: #64748b;
+    --th-mono-600: #94a3b8;
+    --th-mono-700: #cbd5e1;
+    --th-mono-800: #e2e8f0;
+    --th-mono-900: #f1f5f9;
+    --th-mono-950: #f8fafc;
+  }
+
+  body {
+    background-color: var(--color-mono-950);
+    color: var(--color-mono-50);
+    font-family: var(--font-mono);
+  }
+}

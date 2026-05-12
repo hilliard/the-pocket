@@ -1,0 +1,125 @@
+---
+import { query } from '../../server/db';
+import Header from '../../components/Header.astro';
+import '../../styles/global.css';
+
+// Ensure user is logged in
+const sessionCookie = Astro.cookies.get('pocket_session')?.value;
+if (!sessionCookie) {
+  return Astro.redirect('/login');
+}
+
+// Decode session manually or import verifySession
+import { verifySession } from '../../server/auth';
+const session = await verifySession(sessionCookie);
+if (!session) {
+  return Astro.redirect('/login');
+}
+
+// Fetch user's subscription
+const subResult = await query(
+  `SELECT status, trial_end, current_period_end, plan_id FROM subscriptions WHERE customer_human_id = $1 ORDER BY created_at DESC LIMIT 1`,
+  [session.humanId]
+);
+const subscription = subResult.rows[0];
+
+// Calculate trial days left
+let trialDaysLeft = 0;
+if (subscription?.status === 'trialing' && subscription.trial_end) {
+  const diffTime = new Date(subscription.trial_end).getTime() - new Date().getTime();
+  trialDaysLeft = Math.max(0, Math.ceil(diffTime / (1000 * 60 * 60 * 24)));
+}
+---
+
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Customer Dashboard | The Pocket</title>
+    <meta name="viewport" content="width=device-width" />
+  </head>
+  <body class="bg-mono-950 text-mono-50 min-h-screen">
+    
+    <Header />
+
+    <main class="max-w-4xl mx-auto px-6 py-12">
+      
+      <div class="mb-12">
+        <h1 class="text-4xl font-black mb-2">My Library</h1>
+        <p class="text-mono-400">View your purchased music and manage your account.</p>
+      </div>
+
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
+        
+        <div class="bg-mono-900 border border-mono-800 p-8 rounded-3xl">
+          <h2 class="text-2xl font-bold mb-4">Your Collection</h2>
+          <p class="text-mono-400 mb-6">You haven't purchased any albums or songs yet. Go check out the global marketplace to discover independent artists.</p>
+          <a href="/store" class="inline-block bg-accent text-mono-950 font-bold px-6 py-3 rounded-xl hover:brightness-110 transition-colors">
+            Browse Store
+          </a>
+        </div>
+
+        <!-- Subscription Settings -->
+        <div class="bg-mono-900 border border-mono-800 p-8 rounded-3xl">
+          <h2 class="text-2xl font-bold mb-4">Subscription Settings</h2>
+          
+          {subscription?.status === 'trialing' ? (
+            <div class="mb-6 bg-accent/10 border border-accent/20 rounded-2xl p-4">
+              <h3 class="text-accent font-bold text-lg mb-1">14-Day Free Trial Active</h3>
+              <p class="text-mono-300 text-sm">You have {trialDaysLeft} days remaining on your trial. Upgrade to a paid plan to unlock exclusive content permanently.</p>
+            </div>
+          ) : subscription?.status === 'active' ? (
+            <div class="mb-6 bg-green-500/10 border border-green-500/20 rounded-2xl p-4">
+              <h3 class="text-green-400 font-bold text-lg mb-1">Active Subscription</h3>
+              <p class="text-mono-300 text-sm">Your {subscription.plan_id} plan is active until {new Date(subscription.current_period_end).toLocaleDateString()}.</p>
+            </div>
+          ) : (
+            <p class="text-mono-400 mb-6">You do not have an active subscription.</p>
+          )}
+
+          <div class="space-y-4">
+            <h4 class="font-bold text-sm text-mono-500 uppercase tracking-wider">Available Plans</h4>
+            
+            <div class="flex flex-col gap-3">
+              <div class="flex items-center justify-between p-4 border border-mono-700 rounded-xl bg-mono-950">
+                <div>
+                  <h4 class="font-bold">Monthly Fan Plan</h4>
+                  <p class="text-xs text-mono-400">Stream all music ad-free</p>
+                </div>
+                <div class="flex items-center gap-4">
+                  <span class="font-black text-lg">$9.99<span class="text-sm font-normal text-mono-400">/mo</span></span>
+                  <button class="bg-mono-800 hover:bg-mono-700 font-bold px-4 py-2 rounded-lg text-sm transition-colors border border-mono-600">Upgrade</button>
+                </div>
+              </div>
+
+              <div class="flex items-center justify-between p-4 border border-accent/50 rounded-xl bg-accent/5 shadow-[0_0_15px_rgba(168,85,247,0.1)] relative overflow-hidden">
+                <div class="absolute -right-6 top-2 bg-accent text-mono-950 text-[10px] font-black uppercase py-1 px-8 rotate-45">Best Value</div>
+                <div>
+                  <h4 class="font-bold text-accent">Yearly Fan Plan</h4>
+                  <p class="text-xs text-mono-400">Save 20% compared to monthly</p>
+                </div>
+                <div class="flex items-center gap-4 relative z-10">
+                  <span class="font-black text-lg">$90.00<span class="text-sm font-normal text-mono-400">/yr</span></span>
+                  <button class="bg-accent text-mono-950 hover:brightness-110 font-bold px-4 py-2 rounded-lg text-sm transition-colors">Upgrade</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Artist Upgrade -->
+        <div class="bg-mono-900 border border-mono-800 p-8 rounded-3xl bg-gradient-to-br from-mono-900 to-purple-900/20">
+          <h2 class="text-2xl font-bold mb-4">Are you a musician?</h2>
+          <p class="text-mono-400 mb-6">Create your own storefront, upload albums and physical merch, and keep 100% of your sales by upgrading to an Artist account.</p>
+          <form action="/api/customer/become-artist" method="POST">
+            <button type="submit" class="inline-block bg-mono-800 border border-purple-500/50 text-white font-bold px-6 py-3 rounded-xl hover:bg-mono-700 transition-colors shadow-[0_0_15px_rgba(168,85,247,0.2)]">
+              Open My Storefront
+            </button>
+          </form>
+        </div>
+
+      </div>
+
+    </main>
+    
+  </body>
+</html>

@@ -1,0 +1,123 @@
+---
+import Header from '../../components/Header.astro';
+import { getCartItems } from '../../tools/getCartItems';
+import '../../styles/global.css';
+
+// Read cookie to get cart
+const cartCookie = Astro.cookies.get('pocket_cart')?.value;
+let cartRaw: Array<{ id: string; type: string }> = [];
+
+if (cartCookie) {
+  try {
+    cartRaw = JSON.parse(cartCookie);
+  } catch (e) {}
+}
+
+const items = await getCartItems(cartRaw);
+
+// Calculate totals
+const subtotalCents = items.reduce((acc, item) => acc + item.price_cents, 0);
+---
+
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Your Cart | The Pocket</title>
+    <meta name="viewport" content="width=device-width" />
+  </head>
+  <body class="bg-mono-950 text-mono-50 min-h-screen">
+    
+    <Header />
+
+    <main class="max-w-4xl mx-auto px-6 py-12">
+      
+      <div class="mb-12">
+        <h1 class="text-4xl font-black mb-2">Your Shopping Cart</h1>
+        <p class="text-mono-400">Review your items before checking out.</p>
+      </div>
+
+      {items.length === 0 ? (
+        <div class="bg-mono-900 border border-mono-800 rounded-3xl p-12 text-center">
+          <span class="text-6xl opacity-50 block mb-4">🛒</span>
+          <h2 class="text-2xl font-bold mb-2">Your cart is empty</h2>
+          <p class="text-mono-400 mb-6">Discover new music and merch from independent artists.</p>
+          <a href="/store" class="inline-block bg-accent text-mono-950 font-bold px-8 py-4 rounded-xl hover:brightness-110 transition-colors">
+            Browse the Store
+          </a>
+        </div>
+      ) : (
+        <div class="flex flex-col md:flex-row gap-8">
+          
+          <div class="flex-1 flex flex-col gap-4">
+            {items.map((item) => (
+              <div class="bg-mono-900 border border-mono-800 p-4 rounded-2xl flex items-center gap-4">
+                <div class="w-20 h-20 bg-mono-950 rounded-xl overflow-hidden shrink-0 flex items-center justify-center relative">
+                  {item.cover_url ? (
+                    <img src={item.cover_url} alt={item.title} class="w-full h-full object-cover" />
+                  ) : (
+                    <span class="text-3xl opacity-20">{item.type === 'song' ? '🎵' : '📦'}</span>
+                  )}
+                  <span class={`absolute bottom-0 left-0 right-0 text-center text-[8px] font-black uppercase py-0.5
+                    ${item.type === 'album' ? 'bg-purple-500/90 text-white' : 
+                      item.type === 'song' ? 'bg-blue-500/90 text-white' : 
+                      'bg-orange-500/90 text-white'}`}
+                  >
+                    {item.type}
+                  </span>
+                </div>
+                
+                <div class="flex-1">
+                  <h3 class="font-bold text-lg">{item.title}</h3>
+                  <p class="text-sm text-mono-400">{item.artist_name}</p>
+                </div>
+                
+                <div class="text-right">
+                  <span class="font-black text-xl block text-accent">${(item.price_cents / 100).toFixed(2)}</span>
+                  <form method="POST" action="/api/cart/remove" class="inline">
+                    <input type="hidden" name="itemId" value={item.id} />
+                    <button type="submit" class="text-xs text-red-400 hover:text-red-300 underline mt-1">Remove</button>
+                  </form>
+                </div>
+              </div>
+            ))}
+          </div>
+          
+          <div class="w-full md:w-80 shrink-0">
+            <div class="bg-mono-900 border border-mono-800 p-6 rounded-3xl sticky top-8">
+              <h3 class="text-xl font-bold mb-4 border-b border-mono-800 pb-4">Order Summary</h3>
+              
+              <div class="flex justify-between items-center mb-2">
+                <span class="text-mono-400">Subtotal</span>
+                <span class="font-bold">${(subtotalCents / 100).toFixed(2)}</span>
+              </div>
+              <div class="flex justify-between items-center mb-6">
+                <span class="text-mono-400">Taxes & Fees</span>
+                <span class="text-mono-500 text-sm">Calculated at checkout</span>
+              </div>
+              
+              <div class="flex justify-between items-center border-t border-mono-800 pt-4 mb-6">
+                <span class="font-bold text-lg">Total</span>
+                <span class="font-black text-3xl text-accent">${(subtotalCents / 100).toFixed(2)}</span>
+              </div>
+              
+              <form method="POST" action="/api/checkout/create-session">
+                <button type="submit" class="w-full bg-accent text-mono-950 font-black text-lg py-4 rounded-xl hover:brightness-110 transition-colors shadow-[0_0_20px_rgba(168,85,247,0.3)]">
+                  Checkout with Stripe
+                </button>
+              </form>
+              <p class="text-center text-xs text-mono-500 mt-4 flex items-center justify-center gap-1">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
+                  <path fill-rule="evenodd" d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z" clip-rule="evenodd" />
+                </svg>
+                Secure Checkout
+              </p>
+            </div>
+          </div>
+
+        </div>
+      )}
+
+    </main>
+    
+  </body>
+</html>

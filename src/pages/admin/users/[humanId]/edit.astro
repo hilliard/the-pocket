@@ -1,0 +1,219 @@
+---
+import { query } from '../../../../server/db';
+import '../../../../styles/global.css';
+
+const { humanId } = Astro.params;
+
+// Fetch human details
+const userResult = await query(`
+  SELECT h.id, h.first_name, h.last_name, h.phone,
+         (SELECT email FROM email_history WHERE human_id = h.id AND effective_to IS NULL LIMIT 1) as current_email
+  FROM humans h
+  WHERE h.id = $1
+`, [humanId]);
+
+if (userResult.rows.length === 0) {
+  return new Response('User not found', { status: 404 });
+}
+
+const user = userResult.rows[0];
+
+// Fetch active subscription
+const subResult = await query(`
+  SELECT status, plan_id, end_date FROM active_subscriptions 
+  WHERE customer_human_id = $1
+`, [humanId]);
+const subscription = subResult.rows[0] || null;
+
+// Fetch assigned roles
+const userRolesResult = await query(`
+  SELECT sr.id, sr.role_name 
+  FROM human_site_roles hsr
+  JOIN site_roles sr ON hsr.site_role_id = sr.id
+  WHERE hsr.human_id = $1
+`, [humanId]);
+const userRoles = userRolesResult.rows;
+
+// Fetch all available roles for the dropdown
+const allRolesResult = await query(`SELECT id, role_name FROM site_roles`);
+const allRoles = allRolesResult.rows;
+
+// Filter out roles the user already has
+const availableRoles = allRoles.filter(role => !userRoles.some(ur => ur.id === role.id));
+
+// Fetch Order History with polymorphism resolved
+const ordersResult = await query(`
+  SELECT 
+    o.id, o.created_at, o.total_cents, o.status,
+    (
+      SELECT json_agg(
+        json_build_object(
+          'type', oi.entity_type,
+          'title', COALESCE(a.title, s.title, 'Unknown Item'),
+          'price_cents', oi.price_cents
+        )
+      )
+      FROM order_items oi
+      LEFT JOIN albums a ON oi.entity_type = 'album' AND oi.entity_id = a.id
+      LEFT JOIN songs s ON oi.entity_type = 'song' AND oi.entity_id = s.id
+      WHERE oi.order_id = o.id
+    ) as items
+  FROM orders o
+  WHERE o.customer_human_id = $1
+  ORDER BY o.created_at DESC
+`, [humanId]);
+const orders = ordersResult.rows;
+---
+
+<turbo-frame id="modal">
+  <div class="fixed inset-0 z-50 flex items-center justify-center bg-mono-950/80 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+    <div class="bg-mono-900 border border-mono-800 rounded-3xl w-full max-w-4xl max-h-[90vh] overflow-y-auto shadow-2xl relative">
+      
+      <!-- Close Button (Fetches Dashboard and extracts empty modal frame) -->
+      <a href="/admin/dashboard" class="absolute top-6 right-6 text-mono-400 hover:text-mono-50 bg-mono-800 hover:bg-mono-700 p-2 rounded-full transition-colors z-10">
+        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+          <path fill-rule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clip-rule="evenodd" />
+        </svg>
+      </a>
+
+      <div class="grid grid-cols-1 md:grid-cols-2">
+        <!-- Left Column: Edit Profile & Roles -->
+        <div class="p-8 border-r border-mono-800">
+          <h2 class="text-2xl font-black mb-2">Edit Human Profile</h2>
+          <p class="text-mono-400 text-sm mb-8 font-mono">{user.id}</p>
+
+          <!-- Profile Update Form -->
+          <form method="POST" action={`/api/admin/users/${user.id}/update`} data-turbo-frame="_top" class="flex flex-col gap-6 mb-12">
+            
+            <div class="grid grid-cols-2 gap-4">
+              <div class="flex flex-col gap-2">
+                <label class="text-xs font-bold uppercase tracking-wider text-mono-400">First Name</label>
+                <input type="text" name="firstName" value={user.first_name} class="w-full bg-mono-950 border border-mono-700 rounded-xl px-4 py-3 focus:border-accent outline-none" required />
+              </div>
+              <div class="flex flex-col gap-2">
+                <label class="text-xs font-bold uppercase tracking-wider text-mono-400">Last Name</label>
+                <input type="text" name="lastName" value={user.last_name} class="w-full bg-mono-950 border border-mono-700 rounded-xl px-4 py-3 focus:border-accent outline-none" required />
+              </div>
+            </div>
+
+            <div class="grid grid-cols-2 gap-4">
+              <div class="flex flex-col gap-2">
+                <label class="text-xs font-bold uppercase tracking-wider text-mono-400">Email Address</label>
+                <input type="email" name="email" value={user.current_email || ''} class="w-full bg-mono-950 border border-mono-700 rounded-xl px-4 py-3 focus:border-accent outline-none" placeholder="No active email" />
+              </div>
+              <div class="flex flex-col gap-2">
+                <label class="text-xs font-bold uppercase tracking-wider text-mono-400">Phone</label>
+                <input type="tel" name="phone" value={user.phone || ''} class="w-full bg-mono-950 border border-mono-700 rounded-xl px-4 py-3 focus:border-accent outline-none" placeholder="+1..." />
+              </div>
+            </div>
+
+            <div class="flex items-center justify-between bg-mono-950 p-4 rounded-xl border border-mono-800">
+              <div>
+                <h4 class="font-bold text-sm">Subscription Status</h4>
+                <p class="text-xs text-mono-400">Current pocket membership state</p>
+              </div>
+              <div class="text-right">
+                {subscription ? (
+                  <span class="px-3 py-1 bg-green-500/10 border border-green-500/30 text-green-400 text-xs font-bold uppercase tracking-wider rounded-full">
+                    {subscription.status} ({subscription.plan_id || 'Base'})
+                  </span>
+                ) : (
+                  <span class="px-3 py-1 bg-mono-800 border border-mono-700 text-mono-400 text-xs font-bold uppercase tracking-wider rounded-full">
+                    None / Inactive
+                  </span>
+                )}
+              </div>
+            </div>
+
+            <button type="submit" class="self-end bg-mono-50 text-mono-950 px-6 py-3 rounded-xl font-bold hover:bg-mono-200 transition-colors">
+              Save Profile Changes
+            </button>
+          </form>
+
+          <hr class="border-mono-800 mb-8" />
+
+          <!-- Roles Management -->
+          <h3 class="text-lg font-black mb-4">Security Roles</h3>
+          
+          <div class="flex flex-wrap gap-2 mb-6">
+            {userRoles.length === 0 && <span class="text-mono-500 italic text-sm">No roles assigned.</span>}
+            {userRoles.map((role: any) => (
+              <div class={`flex items-center gap-2 pl-3 pr-1 py-1 rounded-full text-xs font-bold uppercase tracking-wider border ${
+                role.role_name === 'admin' ? 'bg-red-500/10 border-red-500/30 text-red-400' : 'bg-mono-800 border-mono-700 text-mono-300'
+              }`}>
+                {role.role_name}
+                
+                <form method="POST" action={`/api/admin/users/${user.id}/roles/remove`} data-turbo-frame="_top">
+                  <input type="hidden" name="roleId" value={role.id} />
+                  <button type="submit" class="hover:bg-red-500/20 hover:text-red-300 p-1 rounded-full transition-colors" title="Revoke Role">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3" viewBox="0 0 20 20" fill="currentColor">
+                      <path fill-rule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clip-rule="evenodd" />
+                    </svg>
+                  </button>
+                </form>
+              </div>
+            ))}
+          </div>
+
+          {availableRoles.length > 0 && (
+            <form method="POST" action={`/api/admin/users/${user.id}/roles/add`} data-turbo-frame="_top" class="flex items-center gap-4 bg-mono-950 p-4 rounded-xl border border-mono-800">
+              <select name="roleId" class="bg-mono-900 border border-mono-700 rounded-lg px-3 py-2 text-sm outline-none flex-1 font-bold">
+                <option value="" disabled selected>Select a role to add...</option>
+                {availableRoles.map(r => (
+                  <option value={r.id}>{r.role_name}</option>
+                ))}
+              </select>
+              <button type="submit" class="bg-accent text-mono-950 px-4 py-2 rounded-lg font-bold text-sm hover:brightness-110 transition-all">
+                Assign Role
+              </button>
+            </form>
+          )}
+        </div>
+
+        <!-- Right Column: Purchase History -->
+        <div class="p-8 bg-mono-950/30">
+          <h3 class="text-xl font-black mb-6">Purchase History</h3>
+          
+          {orders.length === 0 ? (
+            <div class="flex flex-col items-center justify-center py-12 text-center border border-dashed border-mono-800 rounded-2xl">
+              <span class="text-4xl mb-4 opacity-50">🛒</span>
+              <p class="text-mono-400 font-medium">No order history available.</p>
+              <p class="text-mono-500 text-sm mt-1">This user hasn't purchased anything yet.</p>
+            </div>
+          ) : (
+            <div class="flex flex-col gap-4">
+              {orders.map((order: any) => (
+                <div class="bg-mono-900 border border-mono-800 rounded-2xl overflow-hidden shadow-sm">
+                  <div class="p-4 bg-mono-950/50 border-b border-mono-800 flex justify-between items-center">
+                    <div>
+                      <span class="text-xs font-bold text-mono-400 uppercase tracking-wider block">Order {order.id.split('-')[0]}</span>
+                      <span class="text-sm">{new Date(order.created_at).toLocaleDateString()}</span>
+                    </div>
+                    <div class="text-right">
+                      <span class="block font-black text-accent">${(order.total_cents / 100).toFixed(2)}</span>
+                      <span class="text-[10px] uppercase font-bold text-green-400 bg-green-500/10 px-2 py-0.5 rounded-full mt-1 inline-block">{order.status}</span>
+                    </div>
+                  </div>
+                  
+                  <div class="p-4 flex flex-col gap-3">
+                    {order.items ? order.items.map((item: any) => (
+                      <div class="flex justify-between items-center text-sm">
+                        <div class="flex items-center gap-2">
+                          <span class="text-xs text-mono-500 uppercase font-bold bg-mono-950 px-2 py-0.5 rounded">{item.type}</span>
+                          <span class="font-medium text-mono-200">{item.title}</span>
+                        </div>
+                        <span class="text-mono-400">${(item.price_cents / 100).toFixed(2)}</span>
+                      </div>
+                    )) : (
+                      <span class="text-sm text-mono-500 italic">No valid items found</span>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  </div>
+</turbo-frame>

@@ -1,0 +1,42 @@
+%% The Pocket - Project Constitution & Architecture
+%% Built using the BLAST master system framework
+
+graph TD
+    classDef main fill:#1E293B,stroke:#94A3B8,stroke-width:2px,color:#F8FAFC;
+    classDef logic fill:#0F172A,stroke:#6366F1,stroke-width:2px,color:#F8FAFC;
+    classDef nav fill:#0F172A,stroke:#10B981,stroke-width:2px,color:#F8FAFC;
+    classDef tools fill:#0F172A,stroke:#F59E0B,stroke-width:2px,color:#F8FAFC;
+    classDef stack fill:#0F172A,stroke:#E11D48,stroke-width:2px,color:#F8FAFC;
+
+    subgraph Constitution ["Project Constitution: The Pocket"]
+        Mission["Mission: Build deterministic, self-healing multi-tenant musician e-commerce platform"]:::main
+    end
+
+    subgraph Architecture ["Three-Layer Architecture"]
+        Logic["Phase 3.1: Architecture & Logic Layer<br/>(Technical SOPs in markdown: goals, inputs, edge cases)"]:::logic
+        Navigation["Phase 3.2: Navigation<br/>(Reasoning layer routing between SOPs & tools)"]:::nav
+        Tools["Phase 3.3: Tools<br/>(Deterministic scripts, secure env vars)"]:::tools
+        
+        Logic --> Navigation --> Tools
+    end
+    
+    subgraph ClientLayer ["Dir Structure & Tenancy"]
+        Global["/clients/public<br/>(App Home)"]:::main
+        ArtistApp["/clients/artists/{slug}/public<br/>(Artist Storefront)"]:::main
+        ECommerce["/clients/me-commerce"]:::main
+    end
+
+    subgraph Stack ["Technology Stack & Execution"]
+        Astro["Astro (Server-rendered pages)"]:::stack
+        Hotwire["Hotwire (Turbo Streams + Stimulus)<br/>Interactive features, live DOM"]:::stack
+        Tailwind["Tailwind CSS 4 (Mono Document)<br/>Dynamic --color-accent"]:::stack
+        DB["Postgres (Database Tenancy)"]:::stack
+        Services["Resend (Email) & Stripe (Billing)"]:::stack
+    end
+    
+    Astro --> DB
+    Astro --> ClientLayer
+    ClientLayer --> Hotwire
+    ClientLayer --> Tailwind
+    Tools -.-> DB
+    Tools -.-> Services

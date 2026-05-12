@@ -1,0 +1,31 @@
+---
+import { verifySession } from '../server/auth';
+import { query } from '../server/db';
+
+const sessionCookie = Astro.cookies.get('pocket_session')?.value;
+if (!sessionCookie) {
+  return Astro.redirect('/login');
+}
+
+const session = await verifySession(sessionCookie);
+if (!session) {
+  return Astro.redirect('/login');
+}
+
+// Check role
+const rolesResult = await query(
+  `SELECT r.role_name FROM site_roles r
+   JOIN human_site_roles hr ON r.id = hr.site_role_id
+   WHERE hr.human_id = $1`,
+  [session.humanId]
+);
+const roles = rolesResult.rows.map(r => r.role_name);
+
+if (roles.includes('admin')) {
+  return Astro.redirect('/admin/dashboard');
+} else if (roles.includes('artist')) {
+  return Astro.redirect('/artist/dashboard');
+} else {
+  return Astro.redirect('/customer/dashboard');
+}
+---

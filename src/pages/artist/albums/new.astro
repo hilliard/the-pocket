@@ -1,0 +1,68 @@
+---
+import { query } from '../../../server/db';
+
+// Read session from Astro locals
+// @ts-ignore
+const session = Astro.locals.session;
+
+if (!session?.roles?.includes('artist')) {
+  return Astro.redirect('/login');
+}
+
+const typeParam = Astro.url.searchParams.get('type') || 'album';
+const isEp = typeParam === 'ep';
+const displayTitle = isEp ? 'EP' : 'Album';
+---
+
+<turbo-frame id="artist-modal">
+  <div class="fixed inset-0 z-50 flex items-center justify-center bg-mono-950/80 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+    <div class="bg-mono-900 border border-mono-800 rounded-3xl w-full max-w-lg shadow-2xl relative overflow-hidden">
+      
+      <!-- Header -->
+      <div class="bg-mono-950/50 p-6 border-b border-mono-800 flex justify-between items-center">
+        <div>
+          <h2 class="text-xl font-black">Create New {displayTitle}</h2>
+          <p class="text-xs text-mono-400 mt-1">Bundle tracks together</p>
+        </div>
+        <a href="/artist/dashboard" class="text-mono-400 hover:text-mono-50 bg-mono-800 hover:bg-mono-700 p-2 rounded-full transition-colors">
+          <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+            <path fill-rule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clip-rule="evenodd" />
+          </svg>
+        </a>
+      </div>
+
+      <!-- Form -->
+      <form method="POST" action="/api/artist/albums/create" data-turbo-frame="_top" class="p-6 flex flex-col gap-5">
+        <input type="hidden" name="albumType" value={isEp ? 'ep' : 'album'} />
+
+        <div class="flex flex-col gap-2">
+          <label class="text-xs font-bold uppercase tracking-wider text-mono-400">{displayTitle} Title</label>
+          <input type="text" name="title" class="w-full bg-mono-950 border border-mono-700 rounded-xl px-4 py-3 focus:border-accent outline-none" required placeholder={`e.g. ${isEp ? 'Summer Mix' : 'Songs in the Key of Life'}`} />
+        </div>
+
+        <div class="grid grid-cols-2 gap-4">
+          <div class="flex flex-col gap-2">
+            <label class="text-xs font-bold uppercase tracking-wider text-mono-400">Price (Cents)</label>
+            <input type="number" name="priceCents" class="w-full bg-mono-950 border border-mono-700 rounded-xl px-4 py-3 focus:border-accent outline-none font-mono" required placeholder={isEp ? "500" : "1200"} min="0" value={isEp ? "500" : "1200"} />
+          </div>
+          <div class="flex flex-col gap-2">
+            <label class="text-xs font-bold uppercase tracking-wider text-mono-400">Genre</label>
+            <input type="text" name="genre" class="w-full bg-mono-950 border border-mono-700 rounded-xl px-4 py-3 focus:border-accent outline-none" placeholder="e.g. R&B" />
+          </div>
+        </div>
+
+        <div class="flex flex-col gap-2">
+          <label class="text-xs font-bold uppercase tracking-wider text-mono-400">Cover Artwork URL</label>
+          <input type="url" name="coverUrl" class="w-full bg-mono-950 border border-mono-700 rounded-xl px-4 py-3 focus:border-accent outline-none text-sm" placeholder="https://..." />
+        </div>
+
+        <div class="mt-4 flex justify-end gap-3">
+          <a href="/artist/dashboard" class="px-6 py-3 rounded-xl font-bold text-mono-400 hover:text-white transition-colors">Cancel</a>
+          <button type="submit" class="bg-accent text-mono-950 px-6 py-3 rounded-xl font-bold hover:brightness-110 transition-colors">
+            Create {displayTitle}
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+</turbo-frame>

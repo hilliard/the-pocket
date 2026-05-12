@@ -1,0 +1,223 @@
+---
+import Header from '../../components/Header.astro';
+import { query } from '../../server/db';
+import '../../styles/global.css';
+
+// Read session from Astro locals (injected by middleware)
+// @ts-ignore
+const session = Astro.locals.session;
+
+// Ensure the user is an artist
+if (!session?.roles?.includes('artist')) {
+  return Astro.redirect('/login');
+}
+
+// Fetch artist details
+const artistResult = await query(`
+  SELECT a.human_id, a.slug, a.stage_name, a.accent_color_hex 
+  FROM artists a 
+  WHERE a.human_id = $1
+`, [session.humanId]);
+
+if (artistResult.rows.length === 0) {
+  // Edge case: They have the role, but no artist profile was created yet.
+  return new Response('Artist profile not found. Please contact support.', { status: 404 });
+}
+
+const artist = artistResult.rows[0];
+
+// Fetch their current catalog stats
+const statsResult = await query(`
+  SELECT 
+    (SELECT COUNT(*) FROM albums WHERE artist_human_id = $1) as total_albums,
+    (SELECT COUNT(*) FROM songs WHERE artist_human_id = $1) as total_songs,
+    (SELECT COUNT(*) FROM merch WHERE artist_human_id = $1) as total_merch
+`, [artist.human_id]);
+const stats = statsResult.rows[0];
+
+// Fetch recent albums
+const albumsResult = await query(`SELECT id, title, album_type, price_cents, created_at FROM albums WHERE artist_human_id = $1 ORDER BY created_at DESC LIMIT 5`, [artist.human_id]);
+const albums = albumsResult.rows;
+
+// Fetch recent songs
+const songsResult = await query(`SELECT id, title, individual_price_cents as price_cents, created_at FROM songs WHERE artist_human_id = $1 ORDER BY created_at DESC LIMIT 5`, [artist.human_id]);
+const songs = songsResult.rows;
+
+// Fetch recent merch
+const merchResult = await query(`SELECT id, title, price_cents, inventory_count FROM merch WHERE artist_human_id = $1 ORDER BY created_at DESC LIMIT 5`, [artist.human_id]);
+const merch = merchResult.rows;
+---
+
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Artist Dashboard | {artist.stage_name}</title>
+    <meta name="viewport" content="width=device-width" />
+    <style is:inline define:vars={{ color: artist.accent_color_hex }}>
+      :root { --color-accent-dynamic: var(--color); }
+    </style>
+    <script>
+      import "@hotwired/turbo";
+    </script>
+  </head>
+  <body class="bg-mono-950 text-mono-50 min-h-screen selection:bg-accent selection:text-mono-950">
+    <Header />
+    <turbo-frame id="artist-modal"></turbo-frame>
+
+    <main class="max-w-6xl mx-auto px-6 py-12">
+      
+      <div class="flex items-center justify-between mb-12 border-b border-mono-800 pb-8">
+        <div>
+          <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-accent/10 border border-accent/30 text-xs font-bold text-accent mb-4">
+            ARTIST PORTAL
+          </div>
+          <h1 class="text-4xl font-black">Studio: {artist.stage_name}</h1>
+          <p class="text-mono-400 mt-2">Manage your catalog, set pricing, and review your empire.</p>
+        </div>
+        
+        <div class="flex gap-4">
+          <a href={`/clients/artists/${artist.slug}/public`} class="px-6 py-2 bg-mono-800 hover:bg-mono-700 rounded-full font-medium transition-colors border border-mono-700 text-sm flex items-center gap-2">
+            View Storefront
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" /></svg>
+          </a>
+        </div>
+      </div>
+
+      <!-- Quick Stats -->
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-12">
+        <div class="p-6 bg-mono-900 border border-mono-800 rounded-2xl flex flex-col gap-2">
+          <span class="text-mono-400 text-sm font-bold uppercase tracking-wider">Albums Released</span>
+          <span class="text-3xl font-black">{stats.total_albums}</span>
+        </div>
+        <div class="p-6 bg-mono-900 border border-mono-800 rounded-2xl flex flex-col gap-2">
+          <span class="text-mono-400 text-sm font-bold uppercase tracking-wider">Tracks</span>
+          <span class="text-3xl font-black">{stats.total_songs}</span>
+        </div>
+        <div class="p-6 bg-mono-900 border border-mono-800 rounded-2xl flex flex-col gap-2">
+          <span class="text-mono-400 text-sm font-bold uppercase tracking-wider">Merch Variants</span>
+          <span class="text-3xl font-black">{stats.total_merch}</span>
+        </div>
+      </div>
+
+      <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+        
+        <!-- Music Catalog -->
+        <section class="bg-mono-900 border border-mono-800 rounded-3xl overflow-hidden flex flex-col">
+          <div class="p-6 border-b border-mono-800 flex justify-between items-center bg-mono-950/30">
+            <h2 class="text-xl font-bold">Media Catalog</h2>
+            <div class="relative group">
+              <button class="bg-accent text-mono-950 text-sm font-bold px-4 py-2 rounded-lg hover:brightness-110 transition-colors flex items-center gap-2">
+                + Add Media
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" /></svg>
+              </button>
+              
+              <!-- Dropdown Menu -->
+              <div class="absolute right-0 mt-2 w-48 bg-mono-900 border border-mono-700 rounded-xl shadow-xl opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-20 overflow-hidden">
+                <a href="/artist/albums/new?type=album" data-turbo-frame="artist-modal" class="block px-4 py-3 text-sm font-bold hover:bg-mono-800 transition-colors border-b border-mono-800">
+                  💿 Full Album
+                </a>
+                <a href="/artist/albums/new?type=ep" data-turbo-frame="artist-modal" class="block px-4 py-3 text-sm font-bold hover:bg-mono-800 transition-colors border-b border-mono-800">
+                  📼 EP Release
+                </a>
+                <a href="/artist/songs/new" data-turbo-frame="artist-modal" class="block px-4 py-3 text-sm font-bold hover:bg-mono-800 transition-colors">
+                  🎵 Single / Track
+                </a>
+              </div>
+            </div>
+          </div>
+          
+          <div class="p-6 flex-1 flex flex-col gap-6">
+            
+            {albums.length > 0 && (
+              <div>
+                <h3 class="text-xs font-bold text-mono-500 uppercase tracking-wider mb-3">Recent Albums</h3>
+                <div class="flex flex-col gap-3">
+                  {albums.map((album: any) => (
+                    <div class="flex items-center justify-between p-4 bg-mono-950 rounded-xl border border-mono-800">
+                      <div>
+                        <div class="flex items-center gap-2">
+                          <span class="text-[10px] bg-purple-500/10 text-purple-400 border border-purple-500/20 px-1.5 py-0.5 rounded font-bold uppercase">{album.album_type || 'ALBUM'}</span>
+                          <h4 class="font-bold text-mono-100">{album.title}</h4>
+                        </div>
+                        <p class="text-xs text-mono-500 mt-1">Released: {new Date(album.created_at).toLocaleDateString()}</p>
+                      </div>
+                      <div class="text-right">
+                        <span class="block font-black text-accent">${(album.price_cents / 100).toFixed(2)}</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {songs.length > 0 && (
+              <div>
+                <h3 class="text-xs font-bold text-mono-500 uppercase tracking-wider mb-3">Recent Singles / Tracks</h3>
+                <div class="flex flex-col gap-3">
+                  {songs.map((song: any) => (
+                    <div class="flex items-center justify-between p-4 bg-mono-950 rounded-xl border border-mono-800">
+                      <div>
+                        <div class="flex items-center gap-2">
+                          <span class="text-[10px] bg-blue-500/10 text-blue-400 border border-blue-500/20 px-1.5 py-0.5 rounded font-bold uppercase">SONG</span>
+                          <h4 class="font-bold text-mono-100">{song.title}</h4>
+                        </div>
+                        <p class="text-xs text-mono-500 mt-1">Added: {new Date(song.created_at).toLocaleDateString()}</p>
+                      </div>
+                      <div class="text-right">
+                        <span class="block font-black text-accent">${(song.price_cents / 100).toFixed(2)}</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {(albums.length === 0 && songs.length === 0) && (
+              <div class="flex flex-col items-center justify-center py-12 text-center border border-dashed border-mono-700 rounded-2xl h-full">
+                <span class="text-4xl mb-4 opacity-50">🎵</span>
+                <p class="text-mono-400 font-medium">Your discography is empty.</p>
+                <p class="text-mono-500 text-sm mt-1">Upload your first album or single to start selling.</p>
+              </div>
+            )}
+          </div>
+        </section>
+
+        <!-- Physical Merch -->
+        <section class="bg-mono-900 border border-mono-800 rounded-3xl overflow-hidden flex flex-col">
+          <div class="p-6 border-b border-mono-800 flex justify-between items-center bg-mono-950/30">
+            <h2 class="text-xl font-bold">Physical Merch</h2>
+            <a href="/artist/merch/new" data-turbo-frame="artist-modal" class="bg-accent text-mono-950 text-sm font-bold px-4 py-2 rounded-lg hover:brightness-110 transition-colors">
+              + New Item
+            </a>
+          </div>
+          
+          <div class="p-6 flex-1">
+            {merch.length === 0 ? (
+              <div class="flex flex-col items-center justify-center py-12 text-center border border-dashed border-mono-700 rounded-2xl">
+                <span class="text-4xl mb-4 opacity-50">👕</span>
+                <p class="text-mono-400 font-medium">No merch listed.</p>
+                <p class="text-mono-500 text-sm mt-1">Sell t-shirts, vinyl, or hats directly to fans.</p>
+              </div>
+            ) : (
+              <div class="flex flex-col gap-3">
+                {merch.map((item: any) => (
+                  <div class="flex items-center justify-between p-4 bg-mono-950 rounded-xl border border-mono-800">
+                    <div>
+                      <h4 class="font-bold text-mono-100">{item.title}</h4>
+                      <p class="text-xs text-mono-500">Stock: {item.inventory_count} remaining</p>
+                    </div>
+                    <div class="text-right">
+                      <span class="block font-black text-accent">${(item.price_cents / 100).toFixed(2)}</span>
+                      <button class="text-xs text-mono-400 hover:text-white underline mt-1">Edit</button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </section>
+
+      </div>
+    </main>
+  </body>
+</html>

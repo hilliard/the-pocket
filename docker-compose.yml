@@ -1,0 +1,19 @@
+version: '3.8'
+
+services:
+  db:
+    image: postgres:15-alpine
+    restart: always
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: the_pocket
+    ports:
+      - "5432:5432"
+    volumes:
+      - pocket_pgdata:/var/lib/postgresql/data
+      # Mount the initialization scripts
+      - ./db:/docker-entrypoint-initdb.d
+
+volumes:
+  pocket_pgdata:

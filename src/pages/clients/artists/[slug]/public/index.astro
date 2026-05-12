@@ -1,0 +1,60 @@
+---
+// Server-Side Fetch & Logic Layer
+import { getArtistBySlug } from '../../../../../tools/getArtistBySlug';
+import AlbumCard from '../../../../../components/AlbumCard.astro';
+import Header from '../../../../../components/Header.astro';
+import '../../../../../styles/global.css';
+
+const { slug } = Astro.params;
+const artist = await getArtistBySlug(slug as string);
+
+const artistName = artist?.name || slug || 'Unknown Artist';
+const accentColor = artist?.accent_color_hex || '#3b82f6'; // Default to a standard blue
+---
+
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <meta name="viewport" content="width=device-width" />
+    <meta name="generator" content={Astro.generator} />
+    <title>{artistName} - The Pocket</title>
+    
+    <!-- CSS Custom Property Injection (Dynamic Tailwind Integration) -->
+    <style is:inline set:html={`
+      :root {
+        --color-accent-dynamic: ${accentColor};
+      }
+    `} />
+    
+    <script src="../../../../../scripts/hotwire.ts"></script>
+  </head>
+  <body class="bg-mono-950 text-mono-50 min-h-screen">
+    
+    <Header artistSlug={slug as string} artistName={artistName as string} />
+
+    <main class="max-w-4xl mx-auto px-6 py-20 flex flex-col items-center text-center gap-8">
+      
+      <div class="w-32 h-32 rounded-full shadow-[0_0_40px_rgba(0,0,0,0.5)] border-4 border-mono-800 relative overflow-hidden" style={`border-color: ${accentColor}`}>
+        <!-- Placeholder for Avatar -->
+        <div class="absolute inset-0 flex items-center justify-center bg-mono-900 text-mono-600 text-4xl font-black uppercase">
+          {artistName.charAt(0)}
+        </div>
+      </div>
+
+      <h2 class="text-5xl md:text-7xl font-black tracking-tighter">
+        {artistName}
+      </h2>
+      
+      <p class="text-xl text-mono-400 max-w-2xl leading-relaxed">
+        Welcome to my official digital hub. All my latest releases, exclusive masters, and merchandise are available directly through my Me-Commerce storefront.
+      </p>
+
+      <a href={`/clients/artists/${slug}/me-commerce`} class="mt-8 px-8 py-4 rounded-full font-bold text-mono-950 transition-transform hover:scale-105 hover:shadow-lg shadow-accent/20" style={`background-color: ${accentColor}`}>
+        Enter Store &rarr;
+      </a>
+
+    </main>
+    
+  </body>
+</html>
