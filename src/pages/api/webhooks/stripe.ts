@@ -8,7 +8,7 @@ export const prerender = false;
 export const POST: APIRoute = async ({ request }) => {
   const payload = await request.text();
   const sig = request.headers.get('stripe-signature');
-  const endpointSecret = process.env.STRIPE_WEBHOOK_SECRET;
+  const endpointSecret = import.meta.env.STRIPE_WEBHOOK_SECRET || process.env.STRIPE_WEBHOOK_SECRET;
 
   let event;
 
@@ -61,6 +61,11 @@ export const POST: APIRoute = async ({ request }) => {
              VALUES ($1, $2, $3, $4)`,
             [orderId, type, id, price]
           );
+
+          // Inventory reduction for physical goods
+          if (type === 'merch') {
+            await query(`UPDATE merch SET inventory_count = GREATEST(inventory_count - 1, 0) WHERE id = $1`, [id]);
+          }
         }
       }
 

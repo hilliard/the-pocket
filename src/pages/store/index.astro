@@ -119,7 +119,7 @@ const availableGenres = genresResult.rows.map(r => r.genre);
               <div class="group bg-mono-900 border border-mono-800 rounded-3xl overflow-hidden hover:border-mono-600 transition-all hover:-translate-y-1 shadow-lg block relative">
                 
                 {/* Image Area */}
-                <a href={item.type === 'album' ? `/clients/artists/${item.slug}/me-commerce/${item.id}` : `/clients/artists/${item.slug}/me-commerce`} data-turbo-frame="_top" class="block aspect-square bg-mono-950 relative overflow-hidden group/link">
+                <a href={`/clients/artists/${item.slug}/me-commerce/${item.type === 'merch' ? 'merch' : item.type + 's'}/${item.id}`} data-turbo-frame="_top" class="block aspect-square bg-mono-950 relative overflow-hidden group/link">
                   {item.image_url ? (
                     <img src={item.image_url} alt={item.title} class="w-full h-full object-cover group-hover/link:scale-105 transition-transform duration-500" />
                   ) : (
@@ -143,7 +143,7 @@ const availableGenres = genresResult.rows.map(r => r.genre);
                 {/* Details */}
                 <div class="p-5">
                   <p class="text-xs text-mono-400 font-bold uppercase tracking-wider mb-1">{item.stage_name}</p>
-                  <a href={item.type === 'album' ? `/clients/artists/${item.slug}/me-commerce/${item.id}` : `/clients/artists/${item.slug}/me-commerce`} data-turbo-frame="_top" class="block group/title">
+                  <a href={`/clients/artists/${item.slug}/me-commerce/${item.type === 'merch' ? 'merch' : item.type + 's'}/${item.id}`} data-turbo-frame="_top" class="block group/title">
                     <h3 class="font-black text-lg mb-1 truncate group-hover/title:text-accent transition-colors">{item.title}</h3>
                   </a>
                   

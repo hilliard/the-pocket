@@ -1,73 +1,87 @@
 ---
-import { query } from '../../../server/db';
+import '../../../styles/global.css';
+import { verifySession } from '../../../server/auth';
 
-// Read session from Astro locals
-// @ts-ignore
-const session = Astro.locals.session;
-
-if (!session?.roles?.includes('artist')) {
-  return Astro.redirect('/login');
+const sessionCookie = Astro.cookies.get('pocket_session')?.value;
+if (!sessionCookie) return Astro.redirect('/login');
+const session = await verifySession(sessionCookie);
+if (!session || !session.roles?.includes('artist')) {
+  return new Response('Unauthorized', { status: 403 });
 }
 ---
 
-<turbo-frame id="artist-modal">
-  <div class="fixed inset-0 z-50 flex items-center justify-center bg-mono-950/80 backdrop-blur-sm p-4 animate-in fade-in duration-200">
-    <div class="bg-mono-900 border border-mono-800 rounded-3xl w-full max-w-lg shadow-2xl relative overflow-hidden">
-      
-      <!-- Header -->
-      <div class="bg-mono-950/50 p-6 border-b border-mono-800 flex justify-between items-center">
-        <div>
-          <h2 class="text-xl font-black">List New Merch</h2>
-          <p class="text-xs text-mono-400 mt-1">Add physical goods to your storefront</p>
-        </div>
-        <a href="/artist/dashboard" class="text-mono-400 hover:text-mono-50 bg-mono-800 hover:bg-mono-700 p-2 rounded-full transition-colors">
-          <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
-            <path fill-rule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clip-rule="evenodd" />
-          </svg>
-        </a>
-      </div>
-
-      <!-- Form -->
-      <form method="POST" action="/api/artist/merch/create" data-turbo-frame="_top" class="p-6 flex flex-col gap-5">
-        
-        <div class="flex flex-col gap-2">
-          <label class="text-xs font-bold uppercase tracking-wider text-mono-400">Item Name</label>
-          <input type="text" name="title" class="w-full bg-mono-950 border border-mono-700 rounded-xl px-4 py-3 focus:border-accent outline-none" required placeholder="e.g. Classic Logo T-Shirt" />
-        </div>
-
-        <div class="flex flex-col gap-2">
-          <label class="text-xs font-bold uppercase tracking-wider text-mono-400">Description</label>
-          <textarea name="description" rows="3" class="w-full bg-mono-950 border border-mono-700 rounded-xl px-4 py-3 focus:border-accent outline-none" placeholder="100% Cotton, printed locally..."></textarea>
-        </div>
-
-        <div class="grid grid-cols-2 gap-4">
-          <div class="flex flex-col gap-2">
-            <label class="text-xs font-bold uppercase tracking-wider text-mono-400">Price (Cents)</label>
-            <input type="number" name="priceCents" class="w-full bg-mono-950 border border-mono-700 rounded-xl px-4 py-3 focus:border-accent outline-none font-mono" required placeholder="2500" min="0" value="2500" />
-          </div>
-          <div class="flex flex-col gap-2">
-            <label class="text-xs font-bold uppercase tracking-wider text-mono-400">Inventory Stock</label>
-            <input type="number" name="inventoryCount" class="w-full bg-mono-950 border border-mono-700 rounded-xl px-4 py-3 focus:border-accent outline-none font-mono" required placeholder="50" min="0" value="50" />
-          </div>
-        </div>
-
-        <div class="flex flex-col gap-2">
-          <label class="text-xs font-bold uppercase tracking-wider text-mono-400">Image URL</label>
-          <input type="url" name="imageUrl" class="w-full bg-mono-950 border border-mono-700 rounded-xl px-4 py-3 focus:border-accent outline-none text-sm" placeholder="https://..." />
-        </div>
-
-        <div class="flex items-center gap-3 p-4 bg-mono-950 rounded-xl border border-mono-800 mt-2">
-          <input type="checkbox" id="requiresShipping" name="requiresShipping" value="true" checked class="w-5 h-5 accent-accent" />
-          <label for="requiresShipping" class="font-bold cursor-pointer text-sm">Requires Physical Shipping</label>
-        </div>
-
-        <div class="mt-4 flex justify-end gap-3">
-          <a href="/artist/dashboard" class="px-6 py-3 rounded-xl font-bold text-mono-400 hover:text-white transition-colors">Cancel</a>
-          <button type="submit" class="bg-accent text-mono-950 px-6 py-3 rounded-xl font-bold hover:brightness-110 transition-colors">
-            List Item
+<html lang="en">
+  <head>
+    <title>Add Physical Merch</title>
+    <meta name="turbo-cache-control" content="no-cache">
+  </head>
+  <body>
+    <turbo-frame id="artist-modal">
+      <div class="fixed inset-0 bg-mono-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-6 animate-in fade-in duration-200">
+        <div class="bg-mono-900 border border-mono-700 rounded-3xl p-8 max-w-lg w-full shadow-2xl relative max-h-[90vh] overflow-y-auto">
+          
+          <!-- Close Button -->
+          <button type="button" onclick="const f=document.getElementById('artist-modal'); f.innerHTML=''; f.removeAttribute('src');" class="absolute top-6 right-6 text-mono-500 hover:text-white transition-colors cursor-pointer z-10">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+            </svg>
           </button>
+
+          <div class="mb-8">
+            <div class="inline-flex items-center gap-2 px-2 py-1 rounded bg-orange-500/20 text-orange-400 font-bold text-[10px] uppercase tracking-wider mb-2">
+              Merchandise
+            </div>
+            <h2 class="text-2xl font-black">List a New Item</h2>
+            <p class="text-mono-400 text-sm mt-1">Add physical merchandise like t-shirts, vinyl records, or posters to your storefront.</p>
+          </div>
+
+          <form method="POST" action="/api/artist/products/create-merch" enctype="multipart/form-data" data-turbo="false" class="flex flex-col gap-5">
+            
+            <div class="flex flex-col gap-2">
+              <label class="text-xs font-bold uppercase tracking-wider text-mono-400">Item Title</label>
+              <input type="text" name="title" class="w-full bg-mono-950 border border-mono-700 rounded-xl px-4 py-3 text-mono-50 focus:border-accent focus:ring-1 focus:ring-accent outline-none transition-all" required placeholder="e.g. Classic Logo T-Shirt" />
+            </div>
+
+            <div class="flex flex-col gap-2">
+              <label class="text-xs font-bold uppercase tracking-wider text-mono-400">Description</label>
+              <textarea name="description" rows="3" class="w-full bg-mono-950 border border-mono-700 rounded-xl px-4 py-3 text-mono-50 focus:border-accent focus:ring-1 focus:ring-accent outline-none transition-all resize-none" placeholder="100% Cotton, screen-printed locally..."></textarea>
+            </div>
+
+            <div class="flex gap-4">
+              <div class="flex flex-col gap-2 w-1/2">
+                <label class="text-xs font-bold uppercase tracking-wider text-mono-400">Price (USD)</label>
+                <input type="number" step="0.01" name="price" value="24.99" class="w-full bg-mono-950 border border-mono-700 rounded-xl px-4 py-3 text-mono-50 focus:border-accent focus:ring-1 focus:ring-accent outline-none transition-all" required />
+              </div>
+              <div class="flex flex-col gap-2 w-1/2">
+                <label class="text-xs font-bold uppercase tracking-wider text-mono-400">Stock Inventory</label>
+                <input type="number" name="inventory" value="50" min="0" class="w-full bg-mono-950 border border-mono-700 rounded-xl px-4 py-3 text-mono-50 focus:border-accent focus:ring-1 focus:ring-accent outline-none transition-all font-mono" required />
+              </div>
+            </div>
+
+            <div class="flex flex-col gap-2 mt-2">
+              <label class="text-xs font-bold uppercase tracking-wider text-mono-400">Product Image (.jpg or .png)</label>
+              <div class="border-2 border-dashed border-mono-700 rounded-xl p-6 text-center hover:bg-mono-950/50 transition-colors group relative cursor-pointer">
+                <input type="file" name="image_file" accept=".jpg,.jpeg,.png,image/jpeg,image/png" required class="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10" onchange="document.getElementById('fileNameDisplay').textContent = this.files[0]?.name || 'No file selected'" />
+                <span class="text-4xl block mb-2 opacity-50 group-hover:opacity-100 transition-opacity">👕</span>
+                <span class="text-sm font-bold text-accent group-hover:brightness-125 transition-all">Select Image</span>
+                <span class="text-xs text-mono-500 block mt-1">Recommended square image</span>
+                <div id="fileNameDisplay" class="mt-4 text-xs font-mono text-mono-300 truncate px-4">No file selected</div>
+              </div>
+            </div>
+
+            <div class="flex gap-4 mt-6">
+              <button type="button" onclick="const f=document.getElementById('artist-modal'); f.innerHTML=''; f.removeAttribute('src');" class="w-1/3 text-center bg-mono-800 hover:bg-mono-700 text-mono-50 font-bold py-4 rounded-xl transition-colors flex items-center justify-center cursor-pointer">
+                Cancel
+              </button>
+              
+              <button type="submit" onclick="this.innerHTML='<span class=\'animate-pulse\'>Listing Item...</span>'; this.classList.add('opacity-80', 'pointer-events-none');" class="w-2/3 bg-accent hover:brightness-110 text-mono-950 font-black py-4 rounded-xl transition-colors shadow-[0_0_15px_rgba(245,158,11,0.3)] cursor-pointer flex justify-center items-center">
+                Publish to Store
+              </button>
+            </div>
+
+          </form>
         </div>
-      </form>
-    </div>
-  </div>
-</turbo-frame>
+      </div>
+    </turbo-frame>
+  </body>
+</html>

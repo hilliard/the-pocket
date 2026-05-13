@@ -25,6 +25,7 @@ export const POST: APIRoute = async ({ request, cookies, redirect }) => {
     let artistId = null; // Assuming a cart can only have items from ONE artist for simplicity right now
     const lineItems: any[] = [];
     const metadataItems: any[] = [];
+    let requiresShipping = false;
 
     for (const item of cart) {
       let dbItem;
@@ -49,6 +50,7 @@ export const POST: APIRoute = async ({ request, cookies, redirect }) => {
         name = dbItem?.title || 'Unknown Merch';
         price = dbItem?.price_cents || 0;
         imageUrl = dbItem?.image_url;
+        requiresShipping = true;
       }
 
       if (dbItem) {
@@ -85,7 +87,7 @@ export const POST: APIRoute = async ({ request, cookies, redirect }) => {
       }
     }
 
-    const session = await stripe.checkout.sessions.create({
+    const checkoutOptions: any = {
       payment_method_types: ['card'],
       line_items: lineItems,
       mode: 'payment',
@@ -98,7 +100,34 @@ export const POST: APIRoute = async ({ request, cookies, redirect }) => {
         // format: "type:id:price,type:id:price"
         cart_items: metadataItems.join(','),
       },
-    });
+    };
+
+    // Only enable tax if the user has configured it in their dashboard and set the env variable
+    if (import.meta.env.STRIPE_TAX_ENABLED === 'true' || process.env.STRIPE_TAX_ENABLED === 'true') {
+      checkoutOptions.automatic_tax = { enabled: true };
+    }
+
+    if (requiresShipping) {
+      checkoutOptions.shipping_address_collection = {
+        allowed_countries: ['US', 'CA', 'GB', 'AU'], // Expand as needed
+      };
+      // Flat rate $5.00 shipping for physical goods
+      checkoutOptions.shipping_options = [
+        {
+          shipping_rate_data: {
+            type: 'fixed_amount',
+            fixed_amount: { amount: 500, currency: 'usd' },
+            display_name: 'Standard Shipping',
+            delivery_estimate: {
+              minimum: { unit: 'business_day', value: 5 },
+              maximum: { unit: 'business_day', value: 7 },
+            },
+          },
+        },
+      ];
+    }
+
+    const session = await stripe.checkout.sessions.create(checkoutOptions);
 
     if (session.url) {
       return redirect(session.url);

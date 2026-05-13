@@ -21,9 +21,15 @@ if (cartCookie) {
 }
 const sessionCookieHeader = Astro.cookies.get('pocket_session')?.value;
 let currentUsername = null;
+let isArtistRole = false;
+let isAdminRole = false;
 if (sessionCookieHeader) {
-  const s = verifySession(sessionCookieHeader);
-  if (s) currentUsername = s.username;
+  const s = await verifySession(sessionCookieHeader); // verifySession is async!
+  if (s) {
+    currentUsername = s.username;
+    isArtistRole = s.roles?.includes('artist');
+    isAdminRole = s.roles?.includes('admin');
+  }
 }
 const flashCookie = Astro.cookies.get('pocket_flash')?.value;
 let flashMessage = null;
@@ -94,8 +100,24 @@ if (flashCookie) {
         <a href="/library" class="hover:text-mono-50 transition-colors">Library</a>
         {currentUsername ? (
           <div class="flex items-center gap-6">
-            <span class="text-mono-300">Welcome: <span class="font-bold text-mono-50">{currentUsername}</span></span>
-            <a href="/dashboard" class="hover:text-mono-50 transition-colors font-bold text-accent">Dashboard</a>
+            <span class="text-mono-300 hidden md:inline">Welcome: <span class="font-bold text-mono-50">{currentUsername}</span></span>
+            
+            {isAdminRole && (
+              <a href="/admin/dashboard" class="hover:text-mono-50 transition-colors font-bold text-red-400 flex items-center gap-1">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" /><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
+                Admin
+              </a>
+            )}
+
+            {isArtistRole && (
+              <a href="/artist/dashboard" class="hover:text-mono-50 transition-colors font-bold text-purple-400 flex items-center gap-1">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3" /></svg>
+                Studio
+              </a>
+            )}
+            
+            <a href="/dashboard" class="hover:text-mono-50 transition-colors font-bold text-accent">Library</a>
+            
             <form method="POST" action="/api/auth/logout" class="inline">
               <button type="submit" class="hover:text-red-400 transition-colors text-mono-400">Log Out</button>
             </form>

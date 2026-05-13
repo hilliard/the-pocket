@@ -150,9 +150,9 @@ const availableGenres = genresResult.rows.map(r => r.genre);
               <div class="group bg-mono-900 border border-mono-800 rounded-3xl overflow-hidden hover:border-mono-600 transition-all shadow-lg block relative">
                 
                 <!-- Image Area -->
-                <div class="aspect-square bg-mono-950 relative overflow-hidden">
+                <a href={`/clients/artists/${slug}/me-commerce/${item.type === 'merch' ? 'merch' : item.type + 's'}/${item.id}`} data-turbo-frame="_top" class="block aspect-square bg-mono-950 relative overflow-hidden group/link">
                   {item.image_url ? (
-                    <img src={item.image_url} alt={item.title} class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
+                    <img src={item.image_url} alt={item.title} class="w-full h-full object-cover group-hover/link:scale-105 transition-transform duration-500" />
                   ) : (
                     <div class="w-full h-full flex items-center justify-center bg-gradient-to-br from-mono-800 to-mono-950">
                       <span class="text-6xl opacity-20">{item.type === 'song' ? '🎵' : '📦'}</span>
@@ -169,11 +169,13 @@ const availableGenres = genresResult.rows.map(r => r.genre);
                       {item.type === 'album' ? item.album_type : item.type}
                     </span>
                   </div>
-                </div>
+                </a>
 
                 <!-- Details -->
                 <div class="p-5">
-                  <h3 class="font-black text-lg mb-1 truncate group-hover:text-accent transition-colors">{item.title}</h3>
+                  <a href={`/clients/artists/${slug}/me-commerce/${item.type === 'merch' ? 'merch' : item.type + 's'}/${item.id}`} data-turbo-frame="_top" class="block group/title">
+                    <h3 class="font-black text-lg mb-1 truncate group-hover/title:text-accent transition-colors">{item.title}</h3>
+                  </a>
                   
                   <div class="flex items-center justify-between mt-4 mb-4">
                     {item.genre ? (

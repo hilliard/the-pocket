@@ -1,0 +1,133 @@
+---
+import { getArtistBySlug } from '../../../../../../../tools/getArtistBySlug';
+import { query } from '../../../../../../../server/db';
+import Header from '../../../../../../../components/Header.astro';
+import '../../../../../../../styles/global.css';
+
+const { slug, merchId } = Astro.params;
+
+const artist = await getArtistBySlug(slug as string);
+if (!artist) {
+  return Astro.redirect('/clients/public');
+}
+
+// Fetch Merch Details
+const merchResult = await query(`
+  SELECT id, title, price_cents, image_url, inventory_count, description, created_at
+  FROM merch 
+  WHERE id = $1 AND artist_human_id = $2
+`, [merchId, artist.id]);
+
+if (merchResult.rows.length === 0) {
+  return Astro.redirect(`/clients/artists/${slug}/me-commerce`);
+}
+
+const merch = merchResult.rows[0];
+
+const artistName = artist.name;
+const accentColor = artist.accent_color_hex || '#3b82f6';
+---
+
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>{merch.title} | Merch | {artistName} Store</title>
+    
+    <style is:inline set:html={`
+      :root {
+        --color-accent-dynamic: ${accentColor};
+      }
+    `} />
+    <script src="../../../../../../../scripts/hotwire.ts"></script>
+  </head>
+  <body class="bg-mono-950 text-mono-50 min-h-screen selection:bg-accent selection:text-mono-950">
+    <Header artistSlug={slug as string} artistName={artistName} />
+
+    <main class="max-w-5xl mx-auto px-6 py-12">
+      <!-- Back Navigation -->
+      <button onclick="history.back()" class="inline-flex items-center gap-2 text-mono-400 hover:text-white transition-colors mb-8 font-bold text-sm group cursor-pointer">
+        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 group-hover:-translate-x-1 transition-transform" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+        </svg>
+        Go Back
+      </button>
+
+      <div class="flex flex-col md:flex-row gap-16 items-start">
+        
+        <!-- Merch Image -->
+        <aside class="w-full md:w-1/2 flex justify-center items-center">
+          <div class="relative w-full aspect-square bg-mono-900 rounded-3xl overflow-hidden shadow-2xl border border-mono-800 group">
+            {merch.image_url ? (
+              <img src={merch.image_url} alt={merch.title} class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700" />
+            ) : (
+              <div class="w-full h-full flex flex-col items-center justify-center text-mono-700 bg-gradient-to-br from-mono-800 to-mono-950">
+                <span class="text-8xl mb-4 opacity-20">👕</span>
+                <span class="text-sm font-bold uppercase tracking-widest opacity-50">No Image Available</span>
+              </div>
+            )}
+            
+            {merch.inventory_count <= 5 && merch.inventory_count > 0 && (
+              <div class="absolute top-4 right-4 bg-red-500 text-white text-xs font-black px-3 py-1.5 rounded-full uppercase tracking-wider shadow-lg animate-pulse">
+                Only {merch.inventory_count} Left!
+              </div>
+            )}
+            {merch.inventory_count === 0 && (
+              <div class="absolute inset-0 bg-mono-950/80 backdrop-blur-sm flex items-center justify-center z-10">
+                <div class="bg-red-500 text-white text-3xl font-black px-8 py-4 rounded-2xl uppercase tracking-widest shadow-2xl transform -rotate-12 border-4 border-red-400">
+                  Sold Out
+                </div>
+              </div>
+            )}
+          </div>
+        </aside>
+
+        <!-- Merch Details -->
+        <section class="w-full md:w-1/2 flex flex-col gap-6">
+          <div>
+            <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-orange-500/10 border border-orange-500/20 text-[10px] font-bold text-orange-400 mb-4 uppercase tracking-widest">
+              Physical Merchandise
+            </div>
+            <h1 class="text-5xl md:text-6xl font-black mb-3 tracking-tight">{merch.title}</h1>
+            <a href={`/clients/artists/${slug}/public`} class="text-2xl text-mono-400 hover:text-white transition-colors">{artistName}</a>
+          </div>
+
+          <div class="text-mono-400 leading-relaxed text-lg">
+            {merch.description ? (
+              <p>{merch.description}</p>
+            ) : (
+              <p class="italic opacity-50">High-quality merchandise from {artistName}.</p>
+            )}
+          </div>
+
+          <div class="p-8 bg-mono-900 border border-mono-800 rounded-3xl mt-4 relative overflow-hidden group">
+            <div class="absolute inset-0 bg-gradient-to-br from-white/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500 pointer-events-none"></div>
+            
+            <div class="flex items-center justify-between mb-8 relative z-10">
+              <span class="text-5xl font-black text-accent">${(merch.price_cents / 100).toFixed(2)}</span>
+            </div>
+
+            {merch.inventory_count > 0 ? (
+              <turbo-frame id={`cart_frame_merch_${merch.id}`} class="relative z-10">
+                <form method="POST" action={`/api/cart/add`}>
+                  <input type="hidden" name="itemId" value={merch.id} />
+                  <input type="hidden" name="itemType" value="merch" />
+                  <button type="submit" class="w-full bg-accent hover:brightness-110 text-mono-950 font-black py-5 rounded-2xl transition-all shadow-[0_0_30px_rgba(var(--color-accent-dynamic),0.3)] flex items-center justify-center gap-3 hover:scale-[1.02] active:scale-[0.98] text-lg cursor-pointer">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z" />
+                    </svg>
+                    Add Merch to Cart
+                  </button>
+                </form>
+              </turbo-frame>
+            ) : (
+              <button disabled class="w-full bg-mono-800 text-mono-500 font-black py-5 rounded-2xl cursor-not-allowed text-lg border border-mono-700">
+                Out of Stock
+              </button>
+            )}
+          </div>
+
+        </section>
+      </div>
+    </main>
+  </body>
+</html>

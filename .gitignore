@@ -22,3 +22,8 @@ pnpm-debug.log*
 
 # jetbrains setting folder
 .idea/
+
+# Local Media Storage (Do not commit gigabytes of MP3s/WAVs/Images!)
+private_assets/
+public/media_assets/
+public/artists/

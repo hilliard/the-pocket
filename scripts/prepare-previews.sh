@@ -36,8 +36,12 @@ for file in "${mp3_files[@]}"; do
     
     echo "Processing: $filename"
     
-    # The FFmpeg command preserving metadata and cover art
-    ffmpeg -loglevel error -y -i "$file" -ss 00:00:15 -t 30 -map 0 -map_metadata 0 -c copy -id3v2_version 3 "$OUTPUT_DIR/${basename}_preview.mp3"
+    # Premium FFmpeg Pipeline:
+    # 1. Cuts exactly 30 seconds starting at 00:15
+    # 2. Applies a 1.5-second fade in at the start, and a 1.5-second fade out at the end
+    # 3. Preserves all metadata and cover art (-map 0 -map_metadata 0)
+    # 4. Standardizes the output to 192k bitrate
+    ffmpeg -loglevel error -y -ss 00:00:15 -i "$file" -t 30 -af "afade=t=in:st=0:d=1.5,afade=t=out:st=28.5:d=1.5" -map 0:a? -map 0:v? -map_metadata 0 -c:v copy -b:a 192k -id3v2_version 3 "$OUTPUT_DIR/${basename}_preview.mp3"
 done
 
 echo "--------------------------------------------------"

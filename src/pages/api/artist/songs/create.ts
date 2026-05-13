@@ -1,118 +1,112 @@
 import type { APIRoute } from 'astro';
 import { query } from '../../../../server/db';
+import { verifySession } from '../../../../server/auth';
 import fs from 'fs/promises';
 import path from 'path';
-import { createMediaStructure } from '../../../../tools/createMediaStructure';
+import { exec } from 'child_process';
+import util from 'util';
 
-export const POST: APIRoute = async ({ request, redirect, locals }) => {
-  // @ts-ignore
-  const session = locals.session;
-  if (!session?.roles?.includes('artist')) {
-    return new Response('Forbidden', { status: 403 });
-  }
+const execAsync = util.promisify(exec);
 
+export const POST: APIRoute = async ({ request, cookies, redirect }) => {
   try {
+    const sessionCookie = cookies.get('pocket_session')?.value;
+    if (!sessionCookie) return redirect('/login');
+
+    const session = await verifySession(sessionCookie);
+    if (!session || !session.roles?.includes('artist')) {
+      return new Response('Unauthorized', { status: 403 });
+    }
+
     const formData = await request.formData();
-    
+    const albumId = formData.get('albumId')?.toString();
     const title = formData.get('title')?.toString();
-    const priceCents = parseInt(formData.get('priceCents')?.toString() || '99', 10);
-    const genre = formData.get('genre')?.toString() || null;
-    const bpm = formData.get('bpm') ? parseInt(formData.get('bpm')!.toString(), 10) : null;
-    const duration = formData.get('duration') ? parseInt(formData.get('duration')!.toString(), 10) : null;
-    const isrc = formData.get('isrc')?.toString() || null;
-    const isExplicit = formData.get('isExplicit') === 'true';
-
     const masterAudio = formData.get('masterAudio') as File | null;
-    const previewAudio = formData.get('previewAudio') as File | null;
+    const duration = formData.get('duration')?.toString();
+    const bpm = formData.get('bpm')?.toString();
 
-    if (!title || !masterAudio) {
-      return new Response('Title and Master Audio are required', { status: 400 });
+    if (!albumId || !title || !masterAudio || !masterAudio.name) {
+      return new Response('Missing required fields or valid file', { status: 400 });
     }
 
-    // Get artist info to scaffold folders
-    const artistResult = await query(`SELECT stage_name FROM artists WHERE human_id = $1`, [session.humanId]);
-    if (artistResult.rows.length === 0) return new Response('Artist not found', { status: 404 });
-    const stageName = artistResult.rows[0].stage_name;
-    const humanIdShort = session.humanId.split('-')[0];
+    // Verify album ownership
+    const albumRes = await query('SELECT id FROM albums WHERE id = $1 AND artist_human_id = $2', [albumId, session.humanId]);
+    if (albumRes.rows.length === 0) return new Response('Album not found or unauthorized', { status: 403 });
 
-    // Scaffold/Verify folder structure
-    const { success, publicMediaPath, privateMediaPath } = await createMediaStructure({
-      humanIdShort,
-      stageName
-    });
+    // Get Artist details
+    const artistRes = await query('SELECT slug, human_id FROM artists WHERE human_id = $1', [session.humanId]);
+    const artist = artistRes.rows[0];
 
-    if (!success || !publicMediaPath || !privateMediaPath) {
-      return new Response('Failed to prepare media directories', { status: 500 });
-    }
+    // Generate a new ID for the song
+    const songRes = await query('SELECT gen_random_uuid() as new_id');
+    const songId = songRes.rows[0].new_id;
 
-    // Generate safe filenames
-    const sanitizeFilename = (name: string) => name.replace(/[^a-zA-Z0-9.\-_]/g, '_');
-    const timestamp = Date.now();
+    // Get current track number
+    const trackCountRes = await query('SELECT COUNT(*) as count FROM album_songs WHERE album_id = $1', [albumId]);
+    const nextTrackNumber = parseInt(trackCountRes.rows[0].count) + 1;
+
+    // Build directory structures
+    const ext = path.extname(masterAudio.name).toLowerCase() || '.mp3';
+    const artistFolder = `${artist.human_id.split('-')[0]}-${artist.slug}`;
+    const masterDir = path.join(process.cwd(), 'private_assets', 'artists', artistFolder, 'products', 'music', 'masters');
+    const previewDir = path.join(process.cwd(), 'public', 'media_assets', 'artists', artistFolder, 'products', 'music', 'previews');
     
-    const masterFilename = `${timestamp}_${sanitizeFilename(masterAudio.name)}`;
-    const masterPath = path.join(privateMediaPath, 'products', 'music', 'masters', masterFilename);
-    await fs.writeFile(masterPath, Buffer.from(await masterAudio.arrayBuffer()));
+    await fs.mkdir(masterDir, { recursive: true });
+    await fs.mkdir(previewDir, { recursive: true });
 
-    const artistPrefix = `${humanIdShort}-${stageName.replace(/[^a-zA-Z0-9]/g, '')}`;
-    const masterAudioPath = `artists/${artistPrefix}/products/music/masters/${masterFilename}`;
+    const safeTitle = title.replace(/[^a-z0-9]/gi, '_').toLowerCase();
+    const masterFilename = `${songId}_${safeTitle}${ext}`;
+    const previewFilename = `${songId}_${safeTitle}_preview.mp3`;
+
+    const masterPath = path.join(masterDir, masterFilename);
+    const previewPath = path.join(previewDir, previewFilename);
+
+    // Save Master File
+    const arrayBuffer = await masterAudio.arrayBuffer();
+    const buffer = Buffer.from(arrayBuffer);
+    await fs.writeFile(masterPath, buffer);
+
+    // Generate Preview with FFmpeg
+    const ffmpegCommand = `ffmpeg -loglevel error -y -ss 00:00:15 -i "${masterPath}" -t 30 -af "afade=t=in:st=0:d=1.5,afade=t=out:st=28.5:d=1.5" -map 0:a? -map_metadata 0 -b:a 192k -id3v2_version 3 "${previewPath}"`;
     
-    let previewAudioUrl = null;
-    if (previewAudio && previewAudio.size > 0) {
-      const previewFilename = `${timestamp}_${sanitizeFilename(previewAudio.name)}`;
-      const previewPath = path.join(publicMediaPath, 'products', 'music', 'previews', previewFilename);
-      await fs.writeFile(previewPath, Buffer.from(await previewAudio.arrayBuffer()));
-      previewAudioUrl = `/media_assets/artists/${artistPrefix}/products/music/previews/${previewFilename}`;
+    let previewDbPath = null;
+    try {
+      await execAsync(ffmpegCommand);
+      previewDbPath = `/media_assets/artists/${artistFolder}/products/music/previews/${previewFilename}`;
+    } catch (ffmpegErr) {
+      console.error("FFmpeg failed to generate preview.", ffmpegErr);
     }
 
-    const albumId = formData.get('albumId')?.toString() || null;
+    // Insert into DB
+    const durInt = duration ? parseInt(duration) : null;
+    const bpmInt = bpm ? parseInt(bpm) : null;
 
-    // Insert the song into the database
-    const insertSongResult = await query(`
-      INSERT INTO songs (
-        artist_human_id, title, individual_price_cents, genre, bpm, duration_seconds, 
-        isrc, is_explicit, master_audio_path, preview_audio_url
-      )
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-      RETURNING id
-    `, [
-      session.humanId, 
-      title, 
-      priceCents, 
-      genre, 
-      bpm, 
-      duration, 
-      isrc, 
-      isExplicit,
-      masterAudioPath,
-      previewAudioUrl
-    ]);
+    // A song tied to an album initially doesn't have an individual price, but we default to 0.99 if they want to sell it separately later.
+    await query(`
+      INSERT INTO songs (id, artist_human_id, title, individual_price_cents, duration_seconds, bpm, preview_audio_url)
+      VALUES ($1, $2, $3, 99, $4, $5, $6)
+    `, [songId, artist.human_id, title, durInt, bpmInt, previewDbPath]);
 
-    const newSongId = insertSongResult.rows[0].id;
+    // Bridge song to album
+    await query(`
+      INSERT INTO album_songs (album_id, song_id, track_number)
+      VALUES ($1, $2, $3)
+    `, [albumId, songId, nextTrackNumber]);
 
-    // If part of an album, bridge it!
-    if (albumId) {
-      // Find the next track number
-      const trackCountResult = await query(`SELECT COALESCE(MAX(track_number), 0) + 1 as next_track FROM album_songs WHERE album_id = $1`, [albumId]);
-      const nextTrack = trackCountResult.rows[0].next_track;
+    // Track Master File
+    const masterDbPath = `/artists/${artistFolder}/products/music/masters/${masterFilename}`;
+    await query(`
+      INSERT INTO media_files (entity_type, entity_id, file_path, file_format, mime_type)
+      VALUES ('song', $1, $2, $3, $4)
+    `, [songId, masterDbPath, ext.replace('.', ''), masterAudio.type || 'audio/mpeg']);
 
-      await query(`
-        INSERT INTO album_songs (album_id, song_id, track_number)
-        VALUES ($1, $2, $3)
-      `, [albumId, newSongId, nextTrack]);
+    cookies.set('pocket_flash', 'Track added successfully!', { path: '/' });
+    
+    // Redirect back to the tracks manager modal
+    return redirect(`/artist/albums/${albumId}/tracks`);
 
-      // Redirect back to the album tracks manager modal
-      return redirect(`/artist/albums/${albumId}/tracks`);
-    }
-
-    // Break out of turbo-frame and reload dashboard for independent singles
-    return redirect('/artist/dashboard');
-
-  } catch (err: any) {
-    console.error('[ARTIST SONG CREATE ERROR]:', err);
-    // If ISRC is unique violation
-    if (err.code === '23505') {
-      return new Response('ISRC must be unique', { status: 400 });
-    }
-    return new Response('Server Error', { status: 500 });
+  } catch (error) {
+    console.error('Error adding track to album:', error);
+    return new Response('Internal Server Error', { status: 500 });
   }
 };
