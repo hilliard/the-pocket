@@ -1,0 +1,104 @@
+---
+import '../../../../../styles/global.css';
+import { query } from '../../../../../server/db';
+import { verifySession } from '../../../../../server/auth';
+
+const { type, id } = Astro.params;
+
+// Artist Auth Check
+const sessionCookie = Astro.cookies.get('pocket_session')?.value;
+if (!sessionCookie) return Astro.redirect('/login');
+const session = await verifySession(sessionCookie);
+if (!session || !session.roles?.includes('artist')) {
+  return new Response('Unauthorized', { status: 403 });
+}
+
+let product = null;
+
+if (type === 'album') {
+  const res = await query('SELECT * FROM albums WHERE id = $1 AND artist_human_id = $2', [id, session.humanId]);
+  product = res.rows[0];
+} else if (type === 'song') {
+  const res = await query('SELECT * FROM songs WHERE id = $1 AND artist_human_id = $2', [id, session.humanId]);
+  product = res.rows[0];
+} else if (type === 'merch') {
+  const res = await query('SELECT * FROM merch WHERE id = $1 AND artist_human_id = $2', [id, session.humanId]);
+  product = res.rows[0];
+}
+
+if (!product) {
+  return new Response('Product not found or unauthorized', { status: 404 });
+}
+
+const title = product.title || '';
+const priceCents = product.price_cents || product.individual_price_cents || 0;
+const priceFormatted = (priceCents / 100).toFixed(2);
+const genre = product.genre || '';
+const coverUrl = product.cover_url || product.image_url || '';
+---
+
+<html lang="en">
+  <head>
+    <title>Edit Product</title>
+    <meta name="turbo-cache-control" content="no-cache">
+  </head>
+  <body>
+    <turbo-frame id="artist-modal">
+      <div class="fixed inset-0 bg-mono-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-6 animate-in fade-in duration-200">
+        <div class="bg-mono-900 border border-mono-700 rounded-3xl p-8 max-w-lg w-full shadow-2xl relative">
+          
+          <!-- Close Button -->
+          <button type="button" onclick="const f=document.getElementById('artist-modal'); f.innerHTML=''; f.removeAttribute('src');" class="absolute top-6 right-6 text-mono-500 hover:text-white transition-colors cursor-pointer">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+
+          <div class="mb-8">
+            <div class="inline-flex items-center gap-2 px-2 py-1 rounded bg-accent/20 text-accent font-bold text-[10px] uppercase tracking-wider mb-2">
+              Edit {type}
+            </div>
+            <h2 class="text-2xl font-black">Edit "{title}"</h2>
+            <p class="text-mono-400 text-sm mt-1">Update your catalog details.</p>
+          </div>
+
+          <form method="POST" action="/api/artist/products/update" data-turbo="false" class="flex flex-col gap-5">
+            <input type="hidden" name="id" value={id} />
+            <input type="hidden" name="type" value={type} />
+            
+            <div class="flex flex-col gap-2">
+              <label class="text-xs font-bold uppercase tracking-wider text-mono-400">Title</label>
+              <input type="text" name="title" value={title} class="w-full bg-mono-950 border border-mono-700 rounded-xl px-4 py-3 text-mono-50 focus:border-accent focus:ring-1 focus:ring-accent outline-none transition-all" required />
+            </div>
+
+            <div class="flex flex-col gap-2">
+              <label class="text-xs font-bold uppercase tracking-wider text-mono-400">Price (USD)</label>
+              <input type="number" step="0.01" name="price" value={priceFormatted} class="w-full bg-mono-950 border border-mono-700 rounded-xl px-4 py-3 text-mono-50 focus:border-accent focus:ring-1 focus:ring-accent outline-none transition-all" required />
+            </div>
+
+            {type !== 'merch' && (
+              <div class="flex flex-col gap-2">
+                <label class="text-xs font-bold uppercase tracking-wider text-mono-400">Genre</label>
+                <input type="text" name="genre" value={genre} class="w-full bg-mono-950 border border-mono-700 rounded-xl px-4 py-3 text-mono-50 focus:border-accent focus:ring-1 focus:ring-accent outline-none transition-all" />
+              </div>
+            )}
+
+            {type !== 'song' && (
+              <div class="flex flex-col gap-2">
+                <label class="text-xs font-bold uppercase tracking-wider text-mono-400">Image URL</label>
+                <input type="text" name="cover_url" value={coverUrl} class="w-full bg-mono-950 border border-mono-700 rounded-xl px-4 py-3 text-mono-50 focus:border-accent focus:ring-1 focus:ring-accent outline-none transition-all text-sm" placeholder="https://... or /images/..." />
+              </div>
+            )}
+
+            <div class="flex gap-4 mt-4">
+              <button type="button" onclick="const f=document.getElementById('artist-modal'); f.innerHTML=''; f.removeAttribute('src');" class="w-1/2 text-center bg-mono-800 hover:bg-mono-700 text-mono-50 font-bold py-4 rounded-xl transition-colors flex items-center justify-center gap-2 cursor-pointer">
+                Cancel
+              </button>
+              <button type="submit" class="w-1/2 bg-accent hover:brightness-110 text-mono-950 font-black py-4 rounded-xl transition-colors shadow-[0_0_15px_rgba(245,158,11,0.3)] cursor-pointer">Save Changes</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </turbo-frame>
+  </body>
+</html>

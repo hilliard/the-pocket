@@ -29,6 +29,27 @@ const usersResult = await query(`
   ORDER BY h.created_at DESC LIMIT 10
 `);
 const recentUsers = usersResult.rows;
+
+// Fetch Global Catalog for moderation
+const catalogResult = await query(`
+  SELECT * FROM (
+    SELECT 'album' as type, a.id, a.title, a.price_cents, a.genre, art.stage_name, a.created_at
+    FROM albums a JOIN artists art ON a.artist_human_id = art.human_id
+    
+    UNION ALL
+    
+    SELECT 'song' as type, s.id, s.title, s.individual_price_cents as price_cents, s.genre, art.stage_name, s.created_at
+    FROM songs s JOIN artists art ON s.artist_human_id = art.human_id
+    
+    UNION ALL
+    
+    SELECT 'merch' as type, m.id, m.title, m.price_cents, NULL as genre, art.stage_name, m.created_at
+    FROM merch m JOIN artists art ON m.artist_human_id = art.human_id
+  ) as combined
+  ORDER BY created_at DESC
+  LIMIT 50
+`);
+const catalog = catalogResult.rows;
 ---
 
 <html lang="en">
@@ -125,6 +146,60 @@ const recentUsers = usersResult.rows;
                   </td>
                   <td class="p-4 text-right">
                     <a href={`/admin/users/${user.id}/edit`} data-turbo-frame="modal" class="text-sm font-bold text-accent hover:text-white transition-colors">Edit</a>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- Global Catalog Management -->
+      <section class="bg-mono-900 border border-mono-800 rounded-2xl overflow-hidden mt-12">
+        <div class="p-6 border-b border-mono-800 flex justify-between items-center bg-mono-900/50">
+          <h2 class="text-xl font-bold">Global Product Catalog</h2>
+          <div class="relative">
+            <input type="text" placeholder="Search products..." class="bg-mono-950 border border-mono-700 rounded-lg pl-10 pr-4 py-2 text-sm focus:border-accent outline-none" />
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 absolute left-3 top-2.5 text-mono-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+            </svg>
+          </div>
+        </div>
+
+        <div class="overflow-x-auto">
+          <table class="w-full text-left border-collapse">
+            <thead>
+              <tr class="bg-mono-950/50 text-xs uppercase tracking-wider text-mono-400 border-b border-mono-800">
+                <th class="p-4 font-bold">Product</th>
+                <th class="p-4 font-bold">Artist</th>
+                <th class="p-4 font-bold">Type</th>
+                <th class="p-4 font-bold">Price</th>
+                <th class="p-4 font-bold text-right">Action</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-mono-800">
+              {catalog.map(item => (
+                <tr class="hover:bg-mono-800/30 transition-colors">
+                  <td class="p-4">
+                    <div class="font-bold truncate max-w-[200px]">{item.title}</div>
+                    <div class="text-[10px] text-mono-500 uppercase tracking-widest">{item.genre || 'N/A'}</div>
+                  </td>
+                  <td class="p-4 font-bold text-mono-300">{item.stage_name}</td>
+                  <td class="p-4">
+                    <span class={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${
+                      item.type === 'album' ? 'bg-purple-500/20 text-purple-400' : 
+                      item.type === 'song' ? 'bg-blue-500/20 text-blue-400' : 
+                      'bg-orange-500/20 text-orange-400'
+                    }`}>
+                      {item.type}
+                    </span>
+                  </td>
+                  <td class="p-4 font-mono text-sm">${(item.price_cents / 100).toFixed(2)}</td>
+                  <td class="p-4 text-right">
+                    <div class="flex items-center justify-end gap-3">
+                      <a href={`/admin/products/${item.type}/${item.id}/edit`} data-turbo-frame="modal" class="text-sm font-bold text-accent hover:text-white transition-colors">Edit</a>
+                      <a href={`/admin/products/${item.type}/${item.id}/delete_confirm`} data-turbo-frame="modal" class="text-sm font-bold text-red-500 hover:text-red-400 transition-colors cursor-pointer">Delete</a>
+                    </div>
                   </td>
                 </tr>
               ))}

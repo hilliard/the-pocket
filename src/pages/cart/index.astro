@@ -73,9 +73,10 @@ const subtotalCents = items.reduce((acc, item) => acc + item.price_cents, 0);
                 
                 <div class="text-right">
                   <span class="font-black text-xl block text-accent">${(item.price_cents / 100).toFixed(2)}</span>
-                  <form method="POST" action="/api/cart/remove" class="inline">
+                  <form method="POST" action="/api/cart/remove" class="inline" data-turbo="false">
                     <input type="hidden" name="itemId" value={item.id} />
-                    <button type="submit" class="text-xs text-red-400 hover:text-red-300 underline mt-1">Remove</button>
+                    <input type="hidden" name="itemType" value={item.type} />
+                    <button type="submit" class="text-xs text-red-400 hover:text-red-300 underline mt-1 cursor-pointer">Remove</button>
                   </form>
                 </div>
               </div>

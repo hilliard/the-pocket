@@ -1,0 +1,71 @@
+---
+
+import { query } from '../../../../../server/db';
+import { verifySession } from '../../../../../server/auth';
+
+const { type, id } = Astro.params;
+
+// Admin Auth Check
+const sessionCookie = Astro.cookies.get('pocket_session')?.value;
+if (!sessionCookie) return Astro.redirect('/login');
+const session = await verifySession(sessionCookie);
+if (!session || !session.roles?.includes('admin')) {
+  return new Response('Unauthorized', { status: 403 });
+}
+
+let product = null;
+
+if (type === 'album') {
+  const res = await query('SELECT * FROM albums WHERE id = $1', [id]);
+  product = res.rows[0];
+} else if (type === 'song') {
+  const res = await query('SELECT * FROM songs WHERE id = $1', [id]);
+  product = res.rows[0];
+} else if (type === 'merch') {
+  const res = await query('SELECT * FROM merch WHERE id = $1', [id]);
+  product = res.rows[0];
+}
+
+if (!product) {
+  return new Response('Product not found', { status: 404 });
+}
+
+const title = product.title || '';
+---
+
+<html lang="en">
+  <head>
+    <title>Delete Product</title>
+    <meta name="turbo-cache-control" content="no-cache">
+  </head>
+  <body>
+    <turbo-frame id="modal">
+      <div class="fixed inset-0 bg-mono-950/90 backdrop-blur-md z-50 flex items-center justify-center p-6 animate-in fade-in duration-200">
+        <div class="bg-mono-900 border border-red-500/50 rounded-3xl p-8 max-w-md w-full shadow-2xl relative text-center">
+          
+          <div class="w-16 h-16 bg-red-500/20 rounded-full flex items-center justify-center mx-auto mb-6">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-8 w-8 text-red-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+            </svg>
+          </div>
+
+          <h2 class="text-2xl font-black mb-2">Delete "{title}"?</h2>
+          <p class="text-mono-400 text-sm mb-8">This action cannot be undone. This product will be permanently removed from the catalog and all storefronts.</p>
+
+          <form method="POST" action="/api/admin/products/delete" data-turbo="false" class="flex flex-col gap-3">
+            <input type="hidden" name="id" value={id} />
+            <input type="hidden" name="type" value={type} />
+            
+            <button type="submit" class="w-full bg-red-500 hover:bg-red-600 text-white font-black py-4 rounded-xl transition-colors shadow-[0_0_20px_rgba(239,68,68,0.4)] cursor-pointer">
+              Yes, Delete Permanently
+            </button>
+            <button type="button" onclick="const f=document.getElementById('modal'); f.innerHTML=''; f.removeAttribute('src');" class="w-full text-center bg-transparent border border-mono-700 hover:bg-mono-800 text-mono-300 font-bold py-4 rounded-xl transition-colors cursor-pointer">
+              Cancel
+            </button>
+          </form>
+
+        </div>
+      </div>
+    </turbo-frame>
+  </body>
+</html>

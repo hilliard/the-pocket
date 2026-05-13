@@ -25,6 +25,12 @@ if (sessionCookieHeader) {
   const s = verifySession(sessionCookieHeader);
   if (s) currentUsername = s.username;
 }
+const flashCookie = Astro.cookies.get('pocket_flash')?.value;
+let flashMessage = null;
+if (flashCookie) {
+  flashMessage = flashCookie;
+  Astro.cookies.delete('pocket_flash', { path: '/' });
+}
 ---
 
 <header class="border-b border-mono-800 bg-mono-900/50 backdrop-blur-md sticky top-0 z-50 transition-colors">
@@ -104,6 +110,24 @@ if (sessionCookieHeader) {
     </div>
     
   </div>
+  
+  {/* Global Toast Notification */}
+  {flashMessage && (
+    <div id="toast-message" class="fixed bottom-6 right-6 bg-mono-800 border border-mono-700 text-mono-50 px-6 py-4 rounded-xl shadow-2xl z-[100] flex items-center gap-3 animate-in slide-in-from-bottom-5 duration-300">
+      <div class="w-2 h-2 rounded-full bg-accent animate-pulse"></div>
+      <span class="font-bold">{flashMessage}</span>
+    </div>
+    <script is:inline>
+      setTimeout(() => {
+        const toast = document.getElementById('toast-message');
+        if (toast) {
+          toast.style.opacity = '0';
+          toast.style.transition = 'opacity 0.5s ease';
+          setTimeout(() => toast.remove(), 500);
+        }
+      }, 4000);
+    </script>
+  )}
 </header>
 
 <script is:inline>

@@ -99,6 +99,32 @@ const merch = merchResult.rows;
         </div>
       </div>
 
+      <!-- Tools Callout -->
+      <div class="bg-mono-900 border border-mono-700 p-6 rounded-2xl flex flex-col md:flex-row items-center justify-between gap-4 mb-8 relative overflow-hidden group">
+        <!-- Subtle background glow -->
+        <div class="absolute inset-0 bg-gradient-to-r from-accent/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500 pointer-events-none"></div>
+        
+        <div class="relative z-10">
+          <div class="inline-flex items-center gap-2 px-2 py-1 rounded bg-accent/10 border border-accent/20 text-[10px] font-bold text-accent mb-2 uppercase tracking-wider">
+            Creator Toolkit
+          </div>
+          <h4 class="font-bold text-mono-50 text-xl">Prepare Your Previews & Art</h4>
+          <p class="text-sm text-mono-400 mt-1 max-w-2xl">
+            Don't do it manually. Download our free desktop toolkit to instantly generate 30-second audio previews and optimize your high-res album covers for the web.
+          </p>
+        </div>
+        <a 
+          href="/downloads/tools/GoldTending-Audio-Tools.zip" 
+          download="GoldTending-Audio-Tools.zip"
+          class="relative z-10 bg-mono-800 hover:bg-mono-700 border border-mono-600 text-mono-50 font-bold px-6 py-3 rounded-xl transition-all hover:scale-105 active:scale-95 whitespace-nowrap flex items-center gap-2 shadow-lg"
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-accent" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+          </svg>
+          Download Toolkit
+        </a>
+      </div>
+
       <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
         
         <!-- Music Catalog -->
@@ -147,6 +173,7 @@ const merch = merchResult.rows;
                           <form method="POST" action={`/api/artist/albums/${album.id}/delete`} onsubmit="confirmDelete(event, 'this album')">
                             <button type="submit" class="text-xs text-red-500 hover:text-red-400 underline cursor-pointer">Delete</button>
                           </form>
+                          <a href={`/artist/products/album/${album.id}/edit`} data-turbo-frame="artist-modal" class="text-xs text-mono-400 hover:text-white underline">Edit</a>
                           <a href={`/artist/albums/${album.id}/tracks`} data-turbo-frame="artist-modal" class="text-xs text-mono-400 hover:text-white underline">Manage Tracks</a>
                         </div>
                       </div>
@@ -175,6 +202,7 @@ const merch = merchResult.rows;
                           <form method="POST" action={`/api/artist/songs/${song.id}/delete`} onsubmit="confirmDelete(event, 'this track')">
                             <button type="submit" class="text-xs text-red-500 hover:text-red-400 underline cursor-pointer">Delete</button>
                           </form>
+                          <a href={`/artist/products/song/${song.id}/edit`} data-turbo-frame="artist-modal" class="text-xs text-mono-400 hover:text-white underline">Edit</a>
                         </div>
                       </div>
                     </div>
@@ -219,7 +247,7 @@ const merch = merchResult.rows;
                     </div>
                     <div class="text-right">
                       <span class="block font-black text-accent">${(item.price_cents / 100).toFixed(2)}</span>
-                      <button class="text-xs text-mono-400 hover:text-white underline mt-1">Edit</button>
+                      <a href={`/artist/products/merch/${item.id}/edit`} data-turbo-frame="artist-modal" class="text-xs text-mono-400 hover:text-white underline mt-1 block">Edit</a>
                     </div>
                   </div>
                 ))}

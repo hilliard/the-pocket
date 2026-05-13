@@ -119,11 +119,11 @@ const availableGenres = genresResult.rows.map(r => r.genre);
               <div class="group bg-mono-900 border border-mono-800 rounded-3xl overflow-hidden hover:border-mono-600 transition-all hover:-translate-y-1 shadow-lg block relative">
                 
                 {/* Image Area */}
-                <div class="aspect-square bg-mono-950 relative overflow-hidden">
+                <a href={item.type === 'album' ? `/clients/artists/${item.slug}/me-commerce/${item.id}` : `/clients/artists/${item.slug}/me-commerce`} data-turbo-frame="_top" class="block aspect-square bg-mono-950 relative overflow-hidden group/link">
                   {item.image_url ? (
-                    <img src={item.image_url} alt={item.title} class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
+                    <img src={item.image_url} alt={item.title} class="w-full h-full object-cover group-hover/link:scale-105 transition-transform duration-500" />
                   ) : (
-                    <div class="w-full h-full flex items-center justify-center bg-gradient-to-br from-mono-800 to-mono-950">
+                    <div class="w-full h-full flex items-center justify-center bg-gradient-to-br from-mono-800 to-mono-950 group-hover/link:scale-105 transition-transform duration-500">
                       <span class="text-6xl opacity-20">{item.type === 'song' ? '🎵' : '📦'}</span>
                     </div>
                   )}
@@ -138,12 +138,14 @@ const availableGenres = genresResult.rows.map(r => r.genre);
                       {item.type}
                     </span>
                   </div>
-                </div>
+                </a>
 
                 {/* Details */}
                 <div class="p-5">
                   <p class="text-xs text-mono-400 font-bold uppercase tracking-wider mb-1">{item.stage_name}</p>
-                  <h3 class="font-black text-lg mb-1 truncate group-hover:text-accent transition-colors">{item.title}</h3>
+                  <a href={item.type === 'album' ? `/clients/artists/${item.slug}/me-commerce/${item.id}` : `/clients/artists/${item.slug}/me-commerce`} data-turbo-frame="_top" class="block group/title">
+                    <h3 class="font-black text-lg mb-1 truncate group-hover/title:text-accent transition-colors">{item.title}</h3>
+                  </a>
                   
                   <div class="flex items-center justify-between mt-4">
                     {item.genre ? (
