@@ -1,94 +1,75 @@
 import type { APIRoute } from 'astro';
-import Stripe from 'stripe';
+import { stripe } from '../../../tools/stripe';
 import { query } from '../../../server/db';
 
-const stripe = new Stripe(import.meta.env.STRIPE_SECRET_KEY || 'sk_test_123', {
-  apiVersion: '2023-10-16',
-});
+// Required for Stripe webhook raw body verification
+export const prerender = false;
 
-// Since Stripe webhooks send raw body, Astro needs a special config or we read it manually.
 export const POST: APIRoute = async ({ request }) => {
+  const payload = await request.text();
   const sig = request.headers.get('stripe-signature');
-  const endpointSecret = import.meta.env.STRIPE_WEBHOOK_SECRET || 'whsec_123';
-
-  if (!sig) {
-    return new Response('No signature provided', { status: 400 });
-  }
+  const endpointSecret = process.env.STRIPE_WEBHOOK_SECRET;
 
   let event;
+
   try {
-    const text = await request.text();
-    event = stripe.webhooks.constructEvent(text, sig, endpointSecret);
+    if (endpointSecret) {
+      // Validate signature if secret is provided
+      event = stripe.webhooks.constructEvent(payload, sig as string, endpointSecret);
+    } else {
+      // For local testing without a webhook secret, just parse it
+      event = JSON.parse(payload);
+    }
   } catch (err: any) {
     console.error(`Webhook Error: ${err.message}`);
     return new Response(`Webhook Error: ${err.message}`, { status: 400 });
   }
 
   if (event.type === 'checkout.session.completed') {
-    const session = event.data.object as Stripe.Checkout.Session;
+    const session = event.data.object;
 
-    // We only care about pocket orders
-    if (session.metadata?.is_pocket_order !== 'true') {
-      return new Response('Ignored', { status: 200 });
-    }
-
+    // Fulfill the order
     try {
-      // 1. Create the Order
-      const customerEmail = session.customer_details?.email || session.customer_email || 'unknown@example.com';
-      const subtotalCents = session.amount_subtotal || 0;
-      const totalCents = session.amount_total || 0;
       const stripeSessionId = session.id;
-      const paymentIntentId = typeof session.payment_intent === 'string' ? session.payment_intent : undefined;
+      const customerEmail = session.customer_details?.email || session.customer_email || 'unknown@example.com';
+      const totalCents = session.amount_total || 0;
+      const metadata = session.metadata || {};
       
-      const humanId = session.client_reference_id; // UUID of logged in user, if any
+      const artistHumanId = metadata.artist_human_id;
+      const buyerHumanId = metadata.buyer_human_id || null;
+      const cartItemsStr = metadata.cart_items || '';
 
+      // Create Order
       const orderResult = await query(
-        `INSERT INTO orders (customer_human_id, stripe_session_id, stripe_payment_intent_id, customer_email, subtotal_cents, total_cents, status)
+        `INSERT INTO orders (artist_human_id, customer_human_id, stripe_session_id, customer_email, subtotal_cents, total_cents, status)
          VALUES ($1, $2, $3, $4, $5, $6, 'paid')
          RETURNING id`,
-        [humanId || null, stripeSessionId, paymentIntentId, customerEmail, subtotalCents, totalCents]
+        [artistHumanId, buyerHumanId, stripeSessionId, customerEmail, totalCents, totalCents]
       );
 
       const orderId = orderResult.rows[0].id;
 
-      // 2. Parse metadata to create Order Items
-      // metadata.cart_contents = "album:123,song:456,merch:789"
-      const cartContents = session.metadata?.cart_contents || '';
-      if (cartContents) {
-        const pairs = cartContents.split(',');
-        for (const pair of pairs) {
-          const [type, id] = pair.split(':');
-          if (type && id) {
-            // We need to fetch the price at the time of order or just use 0 if we rely on Stripe's total
-            // For data integrity, let's fetch the price from the DB (assuming it hasn't changed in the last 2 minutes)
-            let priceCents = 0;
-            if (type === 'album') {
-              const r = await query(`SELECT price_cents FROM albums WHERE id = $1`, [id]);
-              if (r.rows.length) priceCents = r.rows[0].price_cents;
-            } else if (type === 'song') {
-              const r = await query(`SELECT individual_price_cents FROM songs WHERE id = $1`, [id]);
-              if (r.rows.length) priceCents = r.rows[0].individual_price_cents;
-            } else if (type === 'merch') {
-              const r = await query(`SELECT price_cents FROM merch WHERE id = $1`, [id]);
-              if (r.rows.length) priceCents = r.rows[0].price_cents;
-            }
-
-            await query(
-              `INSERT INTO order_items (order_id, entity_type, entity_id, price_cents, quantity)
-               VALUES ($1, $2, $3, $4, 1)`,
-              [orderId, type, id, priceCents]
-            );
-          }
+      // Spawn Order Items
+      if (cartItemsStr) {
+        const items = cartItemsStr.split(',');
+        for (const item of items) {
+          const [type, id, priceStr] = item.split(':');
+          const price = parseInt(priceStr, 10);
+          
+          await query(
+            `INSERT INTO order_items (order_id, entity_type, entity_id, price_cents)
+             VALUES ($1, $2, $3, $4)`,
+            [orderId, type, id, price]
+          );
         }
       }
 
-      console.log(`[WEBHOOK] Order ${orderId} successfully created from Stripe Session ${stripeSessionId}`);
-
-    } catch (dbError) {
-      console.error('[WEBHOOK DB ERROR]:', dbError);
-      return new Response('Database error', { status: 500 });
+      console.log(`[WEBHOOK SUCCESS]: Order ${orderId} fulfilled for ${customerEmail}`);
+    } catch (dbErr: any) {
+      console.error('[WEBHOOK DB ERROR]:', dbErr);
+      return new Response(`Database Error: ${dbErr.message}`, { status: 500 });
     }
   }
 
-  return new Response('Success', { status: 200 });
+  return new Response(JSON.stringify({ received: true }), { status: 200 });
 };

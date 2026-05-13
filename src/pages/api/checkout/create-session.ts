@@ -1,103 +1,113 @@
 import type { APIRoute } from 'astro';
-import Stripe from 'stripe';
-import { getCartItems } from '../../../tools/getCartItems';
-import { verifySession } from '../../../server/auth';
-
-const stripe = new Stripe(import.meta.env.STRIPE_SECRET_KEY || 'sk_test_123', {
-  apiVersion: '2023-10-16', // Typical stable version, or leave default
-});
+import { query } from '../../../server/db';
+import { stripe } from '../../../tools/stripe';
 
 export const POST: APIRoute = async ({ request, cookies, redirect }) => {
   try {
-    // 1. Get cart items from cookie
-    const cartCookie = cookies.get('pocket_cart')?.value;
-    if (!cartCookie) return redirect('/cart');
-
-    let cartRaw: Array<{ id: string; type: string }> = [];
-    try {
-      cartRaw = JSON.parse(cartCookie);
-    } catch (e) {
-      return redirect('/cart');
+    const stripeKey = import.meta.env.STRIPE_SECRET_KEY || process.env.STRIPE_SECRET_KEY;
+    if (!stripeKey) {
+      return new Response('Stripe is not configured! You need to add STRIPE_SECRET_KEY=sk_test_... to your .env file.', { status: 500 });
     }
 
-    if (cartRaw.length === 0) return redirect('/cart');
+    const cartCookie = cookies.get('pocket_cart')?.value;
+    if (!cartCookie) {
+      return redirect('/cart?error=empty');
+    }
 
-    const items = await getCartItems(cartRaw);
-    if (items.length === 0) return redirect('/cart');
+    const cart = JSON.parse(cartCookie);
+    if (!Array.isArray(cart) || cart.length === 0) {
+      return redirect('/cart?error=empty');
+    }
 
-    // 2. Identify the customer (if logged in)
-    const sessionCookie = cookies.get('pocket_session')?.value;
-    let customerId = null;
-    let customerEmail = undefined;
+    // Process cart items and fetch real prices from DB
+    // A cart item looks like: { id: "uuid", type: "album" }
+    
+    let artistId = null; // Assuming a cart can only have items from ONE artist for simplicity right now
+    const lineItems: any[] = [];
+    const metadataItems: any[] = [];
 
-    if (sessionCookie) {
-      const authSession = await verifySession(sessionCookie);
-      if (authSession) {
-        customerId = authSession.humanId;
-        // In a full implementation, you'd query the DB to get their actual email
-        // customerEmail = await getCustomerEmail(customerId);
+    for (const item of cart) {
+      let dbItem;
+      let name = '';
+      let price = 0;
+      let imageUrl = null;
+
+      if (item.type === 'album') {
+        const res = await query('SELECT title, price_cents, cover_url, artist_human_id FROM albums WHERE id = $1', [item.id]);
+        dbItem = res.rows[0];
+        name = dbItem?.title || 'Unknown Album';
+        price = dbItem?.price_cents || 0;
+        imageUrl = dbItem?.cover_url;
+      } else if (item.type === 'song') {
+        const res = await query('SELECT title, individual_price_cents, artist_human_id FROM songs WHERE id = $1', [item.id]);
+        dbItem = res.rows[0];
+        name = dbItem?.title || 'Unknown Song';
+        price = dbItem?.individual_price_cents || 0;
+      } else if (item.type === 'merch') {
+        const res = await query('SELECT title, price_cents, image_url, artist_human_id FROM merch WHERE id = $1', [item.id]);
+        dbItem = res.rows[0];
+        name = dbItem?.title || 'Unknown Merch';
+        price = dbItem?.price_cents || 0;
+        imageUrl = dbItem?.image_url;
+      }
+
+      if (dbItem) {
+        if (!artistId) artistId = dbItem.artist_human_id;
+
+        lineItems.push({
+          price_data: {
+            currency: 'usd',
+            product_data: {
+              name: name,
+              images: imageUrl ? [new URL(imageUrl, request.url).toString()] : [],
+            },
+            unit_amount: price,
+          },
+          quantity: 1,
+        });
+
+        metadataItems.push(`${item.type}:${item.id}:${price}`);
       }
     }
 
-    // 3. Build Stripe Line Items
-    const lineItems = items.map(item => {
-      return {
-        price_data: {
-          currency: 'usd',
-          product_data: {
-            name: `${item.title} (${item.type.toUpperCase()})`,
-            description: `By ${item.artist_name}`,
-            images: item.cover_url ? [item.cover_url] : [],
-            metadata: {
-              product_id: item.id,
-              product_type: item.type
-            }
-          },
-          unit_amount: item.price_cents,
-        },
-        quantity: 1, // Currently fixed at 1 per unique item in cart
-      };
-    });
+    if (lineItems.length === 0) {
+      return redirect('/cart?error=invalid_items');
+    }
 
-    // 4. Create Stripe Checkout Session
-    const domain = import.meta.env.SITE || 'http://localhost:4321';
-    
-    // Convert cart objects to a comma separated string for metadata limit 
-    const cartMetadataStr = cartRaw.map(i => `${i.type}:${i.id}`).join(',').substring(0, 500);
+    // Read session to see if buyer is logged in
+    const sessionCookie = cookies.get('pocket_session')?.value;
+    let buyerHumanId = null;
+    if (sessionCookie) {
+      const { verifySession } = await import('../../../server/auth');
+      const verified = await verifySession(sessionCookie);
+      if (verified) {
+        buyerHumanId = verified.humanId;
+      }
+    }
 
-    const stripeSession = await stripe.checkout.sessions.create({
+    const session = await stripe.checkout.sessions.create({
       payment_method_types: ['card'],
       line_items: lineItems,
       mode: 'payment',
-      success_url: `${domain}/checkout/success?session_id={CHECKOUT_SESSION_ID}`,
-      cancel_url: `${domain}/cart`,
-      customer_email: customerEmail,
-      client_reference_id: customerId,
+      success_url: new URL('/checkout/success?session_id={CHECKOUT_SESSION_ID}', request.url).toString(),
+      cancel_url: new URL('/cart', request.url).toString(),
       metadata: {
-        cart_contents: cartMetadataStr,
-        is_pocket_order: 'true'
-      }
+        artist_human_id: artistId,
+        buyer_human_id: buyerHumanId || '',
+        // We pack the cart into metadata so the webhook knows what to fulfill
+        // format: "type:id:price,type:id:price"
+        cart_items: metadataItems.join(','),
+      },
     });
 
-    // 5. Redirect the user to Stripe's hosted checkout page!
-    if (!stripeSession.url) {
-      throw new Error('No Stripe session URL returned.');
+    if (session.url) {
+      return redirect(session.url);
+    } else {
+      throw new Error('Failed to create session URL');
     }
 
-    return redirect(stripeSession.url, 303);
-
-  } catch (error) {
-    console.error('[STRIPE ERROR]:', error);
-    // If they haven't configured their Stripe key yet, let's gracefully fallback
-    if (error instanceof Stripe.errors.AuthenticationError) {
-      return new Response(`
-        <div style="padding: 20px; font-family: sans-serif; text-align: center;">
-          <h2>Stripe is not configured!</h2>
-          <p>You need to add <code>STRIPE_SECRET_KEY=sk_test_...</code> to your <code>.env</code> file.</p>
-          <a href="/cart">Go back to cart</a>
-        </div>
-      `, { status: 500, headers: { 'Content-Type': 'text/html' }});
-    }
-    return new Response('Internal Server Error while creating checkout', { status: 500 });
+  } catch (err: any) {
+    console.error('[STRIPE CHECKOUT ERROR]:', err);
+    return new Response(`Error creating checkout session: ${err.message}`, { status: 500 });
   }
 };

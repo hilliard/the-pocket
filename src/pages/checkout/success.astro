@@ -1,103 +1,131 @@
 ---
+import Header from '../../components/Header.astro';
 import { query } from '../../server/db';
 import '../../styles/global.css';
 
-const orderId = Astro.url.searchParams.get('order_id');
 const sessionId = Astro.url.searchParams.get('session_id');
 
-if (!orderId && !sessionId) {
-  return Astro.redirect('/store');
+if (!sessionId) {
+  return Astro.redirect('/');
 }
 
-// Clear the cart cookie since they just checked out successfully
-Astro.cookies.delete('pocket_cart', { path: '/' });
-
-// Fetch the order (it might not exist yet if webhook is slow)
-let orderResult;
-if (orderId) {
-  orderResult = await query(`SELECT id, total_cents, customer_email, created_at, status FROM orders WHERE id = $1`, [orderId]);
-} else {
-  orderResult = await query(`SELECT id, total_cents, customer_email, created_at, status FROM orders WHERE stripe_session_id = $1`, [sessionId]);
-}
-
-if (orderResult.rows.length === 0) {
-  // Webhook race condition! The webhook hasn't created the order yet.
-  if (sessionId) {
-    return new Response(`
-      <html lang="en">
-        <head><meta http-equiv="refresh" content="3"></head>
-        <body style="background: #09090b; color: white; display: flex; align-items: center; justify-content: center; height: 100vh; font-family: sans-serif;">
-          <div style="text-align: center;">
-            <h2>Verifying Payment...</h2>
-            <p style="color: #a1a1aa;">Please wait while we confirm your order with our payment processor.</p>
-          </div>
-        </body>
-      </html>
-    `, { status: 200, headers: { 'Content-Type': 'text/html' }});
-  }
-  return Astro.redirect('/store');
-}
-
-const order = orderResult.rows[0];
-
-const itemsResult = await query(
-  `SELECT entity_type, price_cents FROM order_items WHERE order_id = $1`,
-  [orderId]
+// Check if the order has been created by the webhook yet
+let orderResult = await query(
+  `SELECT id, total_cents, customer_email, status, created_at 
+   FROM orders 
+   WHERE stripe_session_id = $1`,
+  [sessionId]
 );
 
-const items = itemsResult.rows;
+let order = orderResult.rows[0];
+
+// DEVELOPMENT HACK / WEBHOOK FALLBACK:
+// If the order isn't in our DB yet, but they made it to the success page, 
+// let's fetch the session directly from Stripe to verify payment and fulfill it manually!
+if (!order) {
+  try {
+    const { stripe } = await import('../../tools/stripe');
+    const session = await stripe.checkout.sessions.retrieve(sessionId);
+    
+    if (session.payment_status === 'paid') {
+      const customerEmail = session.customer_details?.email || session.customer_email || 'unknown@example.com';
+      const totalCents = session.amount_total || 0;
+      const metadata = session.metadata || {};
+      
+      const artistHumanId = metadata.artist_human_id;
+      const buyerHumanId = metadata.buyer_human_id || null;
+      const cartItemsStr = metadata.cart_items || '';
+
+      // Create Order
+      const newOrder = await query(
+        `INSERT INTO orders (artist_human_id, customer_human_id, stripe_session_id, customer_email, subtotal_cents, total_cents, status)
+         VALUES ($1, $2, $3, $4, $5, $6, 'paid')
+         ON CONFLICT (stripe_session_id) DO UPDATE SET status = 'paid'
+         RETURNING id, total_cents, customer_email, status, created_at`,
+        [artistHumanId, buyerHumanId, sessionId, customerEmail, totalCents, totalCents]
+      );
+      
+      order = newOrder.rows[0];
+
+      // Spawn Order Items
+      if (cartItemsStr) {
+        const items = cartItemsStr.split(',');
+        for (const item of items) {
+          const [type, id, priceStr] = item.split(':');
+          const price = parseInt(priceStr, 10);
+          
+          await query(
+            `INSERT INTO order_items (order_id, entity_type, entity_id, price_cents)
+             VALUES ($1, $2, $3, $4)`,
+            [order.id, type, id, price]
+          );
+        }
+      }
+    }
+  } catch (err) {
+    console.error('Fallback verification failed:', err);
+  }
+}
+
+const isReady = !!order;
+
+if (isReady) {
+  // Clear the cart cookie since they bought it
+  Astro.cookies.delete('pocket_cart', { path: '/' });
+}
 ---
 
 <html lang="en">
   <head>
     <meta charset="utf-8" />
-    <title>Order Confirmed | The Pocket</title>
+    <title>{isReady ? 'Order Confirmed!' : 'Verifying Payment...'}</title>
     <meta name="viewport" content="width=device-width" />
-    <style is:inline>
-      :root {
-        --color-accent-dynamic: #22c55e; /* Success Green */
-      }
-    </style>
+    {!isReady && <meta http-equiv="refresh" content="3" />}
   </head>
-  <body class="bg-mono-950 text-mono-50 min-h-screen flex items-center justify-center p-6 selection:bg-accent selection:text-mono-950">
+  <body class="bg-mono-950 text-mono-50 min-h-screen flex flex-col">
+    <Header />
     
-    <main class="max-w-lg w-full bg-mono-900 border border-mono-800 rounded-3xl p-8 shadow-2xl flex flex-col items-center text-center gap-6 relative overflow-hidden">
-      <!-- Glow Effect -->
-      <div class="absolute top-0 left-1/2 -translate-x-1/2 w-64 h-64 bg-accent/20 blur-[100px] rounded-full pointer-events-none"></div>
+    <main class="flex-1 flex items-center justify-center p-6">
+      <div class="bg-mono-900 border border-mono-800 p-8 md:p-12 rounded-3xl shadow-2xl max-w-lg w-full text-center">
+        
+        {!isReady ? (
+          <div class="flex flex-col items-center">
+            <div class="w-16 h-16 border-4 border-mono-700 border-t-accent rounded-full animate-spin mb-6"></div>
+            <h1 class="text-3xl font-black mb-2">Verifying Payment...</h1>
+            <p class="text-mono-400">Please wait while we confirm your order with Stripe.</p>
+          </div>
+        ) : (
+          <div class="flex flex-col items-center animate-in fade-in zoom-in duration-500">
+            <div class="w-20 h-20 bg-green-500/10 text-green-500 rounded-full flex items-center justify-center mb-6">
+              <svg xmlns="http://www.w3.org/2000/svg" class="h-10 w-10" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+              </svg>
+            </div>
+            
+            <h1 class="text-4xl font-black mb-2 text-white">Order Confirmed!</h1>
+            <p class="text-mono-400 mb-8">A receipt has been sent to <span class="font-bold text-mono-50">{order.customer_email}</span>.</p>
+            
+            <div class="w-full bg-mono-950 border border-mono-800 rounded-xl p-6 text-left mb-8">
+              <div class="flex justify-between items-center border-b border-mono-800 pb-4 mb-4">
+                <span class="text-mono-400">Order ID</span>
+                <span class="font-mono text-sm">{order.id.split('-')[0]}</span>
+              </div>
+              <div class="flex justify-between items-center border-b border-mono-800 pb-4 mb-4">
+                <span class="text-mono-400">Date</span>
+                <span class="text-sm">{new Date(order.created_at).toLocaleDateString()}</span>
+              </div>
+              <div class="flex justify-between items-center">
+                <span class="font-bold text-lg">Total Paid</span>
+                <span class="font-black text-xl text-accent">${(order.total_cents / 100).toFixed(2)}</span>
+              </div>
+            </div>
 
-      <div class="w-20 h-20 bg-accent/20 text-accent rounded-full flex items-center justify-center mb-2">
-        <svg xmlns="http://www.w3.org/2000/svg" class="h-10 w-10" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
-        </svg>
+            <a href="/dashboard" class="w-full bg-accent text-mono-950 font-bold py-4 rounded-xl hover:brightness-110 transition-all text-center block">
+              Access Your Media
+            </a>
+          </div>
+        )}
       </div>
-
-      <h1 class="text-3xl font-black">Payment Successful</h1>
-      <p class="text-mono-400 leading-relaxed">
-        Thank you for your order! Your payment of <strong class="text-mono-50">${(order.total_cents / 100).toFixed(2)}</strong> has been securely processed. A receipt has been dispatched to {order.customer_email}.
-      </p>
-
-      <div class="w-full bg-mono-950 rounded-xl p-4 border border-mono-800 text-left mt-2">
-        <h3 class="font-bold text-sm text-mono-300 uppercase tracking-wider mb-3">Order Details</h3>
-        <ul class="flex flex-col gap-2">
-          {items.map(item => (
-            <li class="flex justify-between text-sm">
-              <span class="text-mono-50 capitalize">{item.entity_type}</span>
-              <span class="text-mono-400">${(item.price_cents / 100).toFixed(2)}</span>
-            </li>
-          ))}
-          <li class="flex justify-between text-sm font-bold border-t border-mono-800 pt-2 mt-2">
-            <span class="text-mono-50">Total</span>
-            <span class="text-accent">${(order.total_cents / 100).toFixed(2)}</span>
-          </li>
-        </ul>
-      </div>
-
-      <a href="/clients/public" class="mt-4 px-8 py-4 bg-accent text-mono-950 font-bold rounded-xl hover:brightness-110 transition-all w-full shadow-[0_0_20px_rgba(34,197,94,0.3)]">
-        Return to Master Portal
-      </a>
-
-      <p class="text-xs text-mono-600 mt-2 font-mono">Order ID: {orderId}</p>
     </main>
-
   </body>
 </html>

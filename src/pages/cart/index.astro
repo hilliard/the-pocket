@@ -100,7 +100,7 @@ const subtotalCents = items.reduce((acc, item) => acc + item.price_cents, 0);
                 <span class="font-black text-3xl text-accent">${(subtotalCents / 100).toFixed(2)}</span>
               </div>
               
-              <form method="POST" action="/api/checkout/create-session">
+              <form method="POST" action="/api/checkout/create-session" data-turbo="false">
                 <button type="submit" class="w-full bg-accent text-mono-950 font-black text-lg py-4 rounded-xl hover:brightness-110 transition-colors shadow-[0_0_20px_rgba(168,85,247,0.3)]">
                   Checkout with Stripe
                 </button>

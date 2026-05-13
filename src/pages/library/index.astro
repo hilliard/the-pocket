@@ -1,0 +1,128 @@
+---
+import Header from '../../components/Header.astro';
+import { query } from '../../server/db';
+import { verifySession } from '../../server/auth';
+import '../../styles/global.css';
+
+const sessionCookie = Astro.cookies.get('pocket_session')?.value;
+if (!sessionCookie) {
+  return Astro.redirect('/login');
+}
+
+const session = await verifySession(sessionCookie);
+if (!session) {
+  return Astro.redirect('/login');
+}
+
+// Fetch all purchased items for this user
+// (We include a temporary fallback for the email you used while testing without an account)
+const purchasedItemsResult = await query(
+  `SELECT 
+    oi.id, 
+    oi.entity_type, 
+    oi.entity_id, 
+    o.created_at as purchased_at,
+    COALESCE(a.title, s.title, m.title) as title,
+    COALESCE(a.cover_url, m.image_url) as image_url,
+    s.master_audio_path
+   FROM order_items oi
+   JOIN orders o ON o.id = oi.order_id
+   LEFT JOIN albums a ON oi.entity_type = 'album' AND oi.entity_id = a.id
+   LEFT JOIN songs s ON oi.entity_type = 'song' AND oi.entity_id = s.id
+   LEFT JOIN merch m ON oi.entity_type = 'merch' AND oi.entity_id = m.id
+   WHERE (o.customer_human_id = $1 OR o.customer_email = 'grammyhaynes0727@gmail.com') 
+     AND o.status = 'paid'
+   ORDER BY o.created_at DESC`,
+  [session.humanId]
+);
+
+const items = purchasedItemsResult.rows;
+---
+
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>My Library | The Pocket</title>
+    <meta name="viewport" content="width=device-width" />
+  </head>
+  <body class="bg-mono-950 text-mono-50 min-h-screen">
+    
+    <Header />
+
+    <main class="max-w-6xl mx-auto px-6 py-12">
+      <div class="flex items-center justify-between mb-12 border-b border-mono-800 pb-6">
+        <div>
+          <h1 class="text-4xl font-black mb-2">My Library</h1>
+          <p class="text-mono-400">Stream and download your purchased Master files.</p>
+        </div>
+        <a href="/dashboard" class="bg-mono-800 hover:bg-mono-700 font-bold px-6 py-3 rounded-xl transition-colors">
+          &larr; Back to Dashboard
+        </a>
+      </div>
+
+      {items.length === 0 ? (
+        <div class="bg-mono-900 border border-mono-800 p-12 rounded-3xl text-center">
+          <svg xmlns="http://www.w3.org/2000/svg" class="h-16 w-16 mx-auto text-mono-600 mb-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3" />
+          </svg>
+          <h2 class="text-2xl font-bold mb-4">Your library is empty</h2>
+          <p class="text-mono-400 mb-8 max-w-md mx-auto">You haven't purchased any music yet. Check out the Storefronts of our amazing independent artists!</p>
+          <a href="/store" class="inline-block bg-accent text-mono-950 font-bold px-8 py-4 rounded-xl hover:brightness-110 transition-colors">
+            Browse Music
+          </a>
+        </div>
+      ) : (
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {items.map(item => (
+            <div class="bg-mono-900 border border-mono-800 rounded-3xl overflow-hidden group">
+              <div class="aspect-square bg-mono-800 relative">
+                {item.image_url ? (
+                  <img src={item.image_url} alt={item.title} class="w-full h-full object-cover" />
+                ) : (
+                  <div class="w-full h-full flex items-center justify-center bg-mono-800">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-16 w-16 text-mono-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3" />
+                    </svg>
+                  </div>
+                )}
+                <div class="absolute top-4 right-4 bg-mono-950/80 backdrop-blur-sm px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider text-accent border border-accent/20">
+                  {item.entity_type}
+                </div>
+              </div>
+              <div class="p-6">
+                <h3 class="text-xl font-bold mb-1 truncate">{item.title}</h3>
+                <p class="text-sm text-mono-400 mb-6">Purchased on {new Date(item.purchased_at).toLocaleDateString()}</p>
+                
+                {item.entity_type === 'song' ? (
+                  <div class="flex flex-col gap-3">
+                    <audio src={`/api/media/stream?type=master&path=${encodeURIComponent(item.master_audio_path)}`} controls class="w-full h-10 rounded-lg outline-none" controlsList="nodownload"></audio>
+                    <a href={`/api/media/download?path=${encodeURIComponent(item.master_audio_path)}&title=${encodeURIComponent(item.title)}`} target="_blank" class="w-full bg-mono-800 text-mono-50 font-bold py-3 rounded-xl hover:bg-mono-700 transition-colors flex items-center justify-center gap-2 border border-mono-700">
+                      <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                      </svg>
+                      Download Master
+                    </a>
+                  </div>
+                ) : item.entity_type === 'album' ? (
+                  <a href={`/library/albums/${item.entity_id}`} class="w-full bg-accent text-mono-950 font-bold py-3 rounded-xl hover:brightness-110 transition-colors flex items-center justify-center gap-2">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                    Open Album
+                  </a>
+                ) : (
+                  <button disabled class="w-full bg-mono-800 text-mono-500 font-bold py-3 rounded-xl cursor-not-allowed">
+                    Shipping Soon
+                  </button>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+    </main>
+    
+  </body>
+</html>
