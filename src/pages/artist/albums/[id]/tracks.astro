@@ -144,8 +144,29 @@ const tracks = tracksResult.rows;
                 Upload Track to Album
               </button>
             </div>
-          </form>
-        </div>
+            </form>
+          </div>
+
+          <!-- Bulk Upload Area -->
+          <div class="mt-8 border-t border-mono-800 pt-6">
+            <div class="bg-gradient-to-br from-accent/20 to-mono-900 border border-accent/30 rounded-2xl p-6">
+              <h3 class="text-accent font-black text-lg mb-2 flex items-center gap-2">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                  <path fill-rule="evenodd" d="M11.3 1.046A12.014 12.014 0 0010.375 1V1c-6.075 0-11 4.925-11 11s4.925 11 11 11c1.558 0 3.036-.323 4.382-.904l-1.93-1.93A9.957 9.957 0 0110.375 21c-5.523 0-10-4.477-10-10s4.477-10 10-10c.846 0 1.666.105 2.453.303l1.83-1.83a12.007 12.007 0 00-3.358-.427zM18.895 2.105a1 1 0 010 1.414l-9 9a1 1 0 01-1.414 0l-4-4a1 1 0 111.414-1.414L9.182 10.4l8.299-8.299a1 1 0 011.414 0z" clip-rule="evenodd" />
+                </svg>
+                Premium Feature: Bulk Upload
+              </h3>
+              <p class="text-mono-300 text-sm mb-4">Save time! Select multiple audio files at once. We will automatically generate the track records using the filenames.</p>
+              
+              <form method="POST" action="/api/artist/albums/bulk-upload" enctype="multipart/form-data" class="flex flex-col gap-4">
+                <input type="hidden" name="albumId" value={album.id} />
+                <input type="file" name="audioFiles" accept="audio/*" multiple class="w-full bg-mono-950/50 border border-mono-700 rounded-xl px-4 py-3 focus:border-accent outline-none text-sm text-mono-400 file:mr-4 file:py-1.5 file:px-4 file:rounded-full file:border-0 file:text-xs file:font-bold file:bg-accent file:text-mono-950 hover:file:brightness-110 transition-all cursor-pointer" required />
+                <button type="submit" class="bg-mono-950 text-white border border-accent/50 px-6 py-3 rounded-xl font-bold hover:bg-accent hover:text-mono-950 transition-colors self-end text-sm">
+                  Upload All Files
+                </button>
+              </form>
+            </div>
+          </div>
 
         <div class="flex justify-center border-t border-mono-800 pt-6">
           <a href="/artist/dashboard" data-turbo-frame="_top" class="px-8 py-3 bg-mono-800 text-white rounded-xl font-bold hover:bg-mono-700 transition-colors w-full text-center text-lg">
