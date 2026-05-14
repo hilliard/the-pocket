@@ -245,5 +245,17 @@ const events = eventsResult.rows;
       &copy; {new Date().getFullYear()} {artistName}. Powered by The Pocket.
     </footer>
 
+    <script is:inline define:vars={{ artistId: artist.id }}>
+      // Track Page View
+      fetch('/api/analytics/track', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          artist_human_id: artistId,
+          event_type: 'page_view',
+          entity_type: 'hub'
+        })
+      }).catch(err => console.error('Analytics tracking failed', err));
+    </script>
   </body>
 </html>

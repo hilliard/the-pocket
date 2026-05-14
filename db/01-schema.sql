@@ -254,3 +254,27 @@ CREATE TABLE IF NOT EXISTS artist_events (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 CREATE INDEX IF NOT EXISTS idx_artist_events_human_id ON artist_events(artist_human_id);
+
+-- Analytics Events
+CREATE TABLE IF NOT EXISTS analytics_events (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    artist_human_id UUID NOT NULL REFERENCES artists(human_id) ON DELETE CASCADE,
+    event_type VARCHAR(50) NOT NULL, -- 'page_view', 'play_click', 'merch_click', etc.
+    entity_type VARCHAR(50), -- 'hub', 'song', 'album', 'merch'
+    entity_id UUID,
+    visitor_id VARCHAR(255), -- Hash of IP/User-Agent or a tracking cookie
+    referrer VARCHAR(1024),
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_analytics_artist ON analytics_events(artist_human_id);
+CREATE INDEX IF NOT EXISTS idx_analytics_type ON analytics_events(event_type);
+
+-- Custom Domains for White-Label Artist Hubs
+CREATE TABLE IF NOT EXISTS custom_domains (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    domain VARCHAR(255) UNIQUE NOT NULL, -- e.g. 'joeuser.com'
+    artist_human_id UUID NOT NULL REFERENCES artists(human_id) ON DELETE CASCADE,
+    status VARCHAR(50) DEFAULT 'active', -- 'active', 'pending', 'failed'
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_custom_domains_domain ON custom_domains(domain);

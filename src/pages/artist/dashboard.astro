@@ -31,7 +31,8 @@ const statsResult = await query(`
   SELECT 
     (SELECT COUNT(*) FROM albums WHERE artist_human_id = $1) as total_albums,
     (SELECT COUNT(*) FROM songs WHERE artist_human_id = $1) as total_songs,
-    (SELECT COUNT(*) FROM merch WHERE artist_human_id = $1) as total_merch
+    (SELECT COUNT(*) FROM merch WHERE artist_human_id = $1) as total_merch,
+    (SELECT COUNT(DISTINCT visitor_id) FROM analytics_events WHERE artist_human_id = $1 AND event_type = 'page_view') as total_views
 `, [artist.human_id]);
 const stats = statsResult.rows[0];
 
@@ -84,7 +85,12 @@ const merch = merchResult.rows;
       </div>
 
       <!-- Quick Stats -->
-      <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-12">
+      <div class="grid grid-cols-1 md:grid-cols-4 gap-6 mb-12">
+        <div class="p-6 bg-mono-900 border border-mono-800 rounded-2xl flex flex-col gap-2 relative overflow-hidden group hover:border-accent transition-colors">
+          <div class="absolute inset-0 bg-gradient-to-tr from-accent/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity"></div>
+          <span class="text-mono-400 text-sm font-bold uppercase tracking-wider relative z-10">Hub Views</span>
+          <span class="text-3xl font-black text-accent relative z-10">{stats.total_views || 0}</span>
+        </div>
         <div class="p-6 bg-mono-900 border border-mono-800 rounded-2xl flex flex-col gap-2">
           <span class="text-mono-400 text-sm font-bold uppercase tracking-wider">Albums Released</span>
           <span class="text-3xl font-black">{stats.total_albums}</span>
