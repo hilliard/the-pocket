@@ -222,6 +222,30 @@ const events = eventsResult.rows;
         )}
       </section>
 
+      <!-- MAILING LIST SECTION -->
+      <section id="newsletter" class="w-full py-24 border-b border-mono-800 text-center flex flex-col items-center">
+        <h3 class="text-4xl font-black mb-6">Join the Mailing List</h3>
+        <p class="text-mono-400 text-lg max-w-xl mb-8">Get exclusive updates, early access to tickets, and fresh merch drops sent straight to your inbox.</p>
+        
+        <form action="/api/forms/subscribe" method="POST" class="w-full max-w-md flex flex-col gap-4 bg-mono-900 border border-mono-800 p-8 rounded-3xl relative overflow-hidden group">
+          <div class="absolute inset-0 bg-gradient-to-tr from-accent/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity"></div>
+          
+          <input type="hidden" name="artist_human_id" value={artist.id} />
+          
+          <input 
+            type="email" 
+            name="email" 
+            placeholder="Enter your email address..." 
+            class="w-full bg-mono-950 border border-mono-700 rounded-xl p-4 text-white placeholder-mono-500 focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent transition-all relative z-10"
+            required
+          />
+          
+          <button type="submit" class="w-full bg-accent text-mono-950 font-black px-8 py-4 rounded-xl hover:brightness-110 transition-all hover:scale-105 active:scale-95 cursor-pointer relative z-10 shadow-[0_0_20px_rgba(var(--color-accent-dynamic),0.3)]">
+            Subscribe Now
+          </button>
+        </form>
+      </section>
+
       <!-- CONTACT / EPK SECTION -->
       <section id="contact" class="w-full py-24 text-center flex flex-col items-center">
         <h3 class="text-4xl font-black mb-6">Booking & Press</h3>

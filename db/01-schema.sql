@@ -278,3 +278,26 @@ CREATE TABLE IF NOT EXISTS custom_domains (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 CREATE INDEX IF NOT EXISTS idx_custom_domains_domain ON custom_domains(domain);
+
+-- Mailing List Subscribers
+CREATE TABLE IF NOT EXISTS subscribers (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    artist_human_id UUID NOT NULL REFERENCES artists(human_id) ON DELETE CASCADE,
+    email VARCHAR(255) NOT NULL,
+    status VARCHAR(50) DEFAULT 'subscribed', -- 'subscribed', 'unsubscribed', 'bounced'
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(artist_human_id, email) -- A person can only subscribe to the same artist once
+);
+CREATE INDEX IF NOT EXISTS idx_subscribers_artist ON subscribers(artist_human_id);
+
+-- Email Campaigns
+CREATE TABLE IF NOT EXISTS campaigns (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    artist_human_id UUID NOT NULL REFERENCES artists(human_id) ON DELETE CASCADE,
+    subject VARCHAR(255) NOT NULL,
+    body_html TEXT NOT NULL,
+    status VARCHAR(50) DEFAULT 'draft', -- 'draft', 'sending', 'sent'
+    sent_at TIMESTAMP WITH TIME ZONE,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_campaigns_artist ON campaigns(artist_human_id);

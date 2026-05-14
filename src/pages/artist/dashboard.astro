@@ -47,6 +47,10 @@ const songs = songsResult.rows;
 // Fetch recent merch
 const merchResult = await query(`SELECT id, title, price_cents, inventory_count FROM merch WHERE artist_human_id = $1 ORDER BY created_at DESC LIMIT 5`, [artist.human_id]);
 const merch = merchResult.rows;
+
+// Fetch recent subscribers
+const subscribersResult = await query(`SELECT email, created_at FROM subscribers WHERE artist_human_id = $1 ORDER BY created_at DESC LIMIT 10`, [artist.human_id]);
+const subscribers = subscribersResult.rows;
 ---
 
 <html lang="en">
@@ -143,8 +147,55 @@ const merch = merchResult.rows;
         </div>
       </section>
 
+      <!-- Campaign Composer -->
+      <section class="bg-mono-900 border border-mono-800 rounded-3xl overflow-hidden mb-8 relative group">
+        <div class="absolute inset-0 bg-gradient-to-br from-orange-500/5 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-700 pointer-events-none"></div>
+        <div class="p-8 relative z-10">
+          <h2 class="text-2xl font-black mb-2 flex items-center gap-3">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 text-orange-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+            </svg>
+            Email Blast (LetR)
+          </h2>
+          <p class="text-mono-400 mb-6">Draft an email campaign and blast it directly to all your active subscribers.</p>
+          
+          <form action="/api/artist/campaigns/send" method="POST" class="flex flex-col gap-4">
+            <input 
+              type="text" 
+              name="subject" 
+              placeholder="Subject Line (e.g., Early Access: Fall Tour Tickets)" 
+              class="w-full bg-mono-950 border border-mono-700 rounded-xl p-4 text-white placeholder-mono-500 focus:outline-none focus:border-orange-500 focus:ring-1 focus:ring-orange-500 transition-all font-bold"
+              required
+            />
+            
+            <textarea 
+              name="body" 
+              rows="6" 
+              placeholder="Draft your email message here... HTML is supported!" 
+              class="w-full bg-mono-950 border border-mono-700 rounded-xl p-4 text-white placeholder-mono-500 focus:outline-none focus:border-orange-500 focus:ring-1 focus:ring-orange-500 resize-none transition-all"
+              required
+            ></textarea>
+            
+            <div class="flex justify-between items-center mt-2">
+              <div class="text-xs text-mono-500 flex items-center gap-2">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 text-orange-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
+                </svg>
+                Sends instantly to {subscribers.length} active subscribers via Resend.
+              </div>
+              <button type="submit" class="bg-orange-500 text-white font-black px-8 py-3 rounded-full hover:bg-orange-600 transition-all shadow-[0_0_15px_rgba(249,115,22,0.3)] hover:scale-105 active:scale-95 cursor-pointer flex items-center gap-2">
+                Blast Campaign
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
+                </svg>
+              </button>
+            </div>
+          </form>
+        </div>
+      </section>
+
       <!-- Integrations Row -->
-      <div class="grid grid-cols-1 md:grid-cols-2 gap-8 mb-8">
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-8 mb-8">
         
         <!-- Tools Callout -->
         <div class="bg-mono-900 border border-mono-700 p-6 rounded-2xl flex flex-col justify-between gap-4 relative overflow-hidden group">
@@ -220,7 +271,51 @@ const merch = merchResult.rows;
           </div>
         </div>
         
+        <!-- Mailing List Integrations (SSE Streaming) -->
+        <div class="bg-mono-900 border border-mono-700 p-6 rounded-2xl flex flex-col gap-4 relative overflow-hidden group">
+          <div class="absolute inset-0 bg-gradient-to-l from-orange-500/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500 pointer-events-none"></div>
+          
+          <div class="relative z-10 flex flex-col h-full">
+            <div class="inline-flex items-center gap-2 px-2 py-1 rounded bg-orange-500/10 border border-orange-500/20 text-[10px] font-bold text-orange-400 mb-2 uppercase tracking-wider self-start">
+              <span class="w-2 h-2 rounded-full bg-orange-500 animate-pulse"></span>
+              Live Subs
+            </div>
+            <h4 class="font-bold text-mono-50 text-xl">Mailing List</h4>
+            <p class="text-xs text-mono-400 mt-1 mb-4">
+              Real-time feed of fans joining your network.
+            </p>
+
+            <div class="flex-1 bg-mono-950 rounded-xl border border-mono-800 p-4 overflow-y-auto max-h-[200px]" id="subscribers-list">
+              {subscribers.length === 0 ? (
+                <div class="h-full flex flex-col items-center justify-center text-mono-600 text-xs italic">
+                  No subscribers yet.
+                </div>
+              ) : (
+                subscribers.map((sub: any) => (
+                  <div class="flex items-center justify-between p-3 border-b border-mono-800 last:border-0 hover:bg-mono-900 transition-colors">
+                    <span class="font-medium text-sm text-mono-100 truncate w-32">{sub.email}</span>
+                    <span class="text-[10px] text-mono-500 font-mono">{new Date(sub.created_at).toLocaleDateString()}</span>
+                  </div>
+                ))
+              )}
+            </div>
+            
+            <!-- Real-Time SSE Connection Script -->
+            <script type="module" is:inline>
+              import { connectStreamSource } from 'https://cdn.skypack.dev/@hotwired/turbo';
+              
+              const source = new EventSource('/api/artist/subscribers/stream');
+              connectStreamSource(source);
+              
+              source.addEventListener('connected', () => {
+                console.log('⚡ Turbo Stream connected for live subscribers!');
+              });
+            </script>
+          </div>
+        </div>
+
       </div>
+
 
       <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
         
@@ -409,6 +504,140 @@ const merch = merchResult.rows;
             pendingForm.submit();
           }
         });
+      }
+    </script>
+    <!-- Command Palette (Cmd+K) -->
+    <dialog id="cmd-palette" class="bg-transparent m-auto p-0 backdrop:bg-mono-950/80 backdrop:backdrop-blur-sm open:flex flex-col w-full max-w-2xl shadow-2xl rounded-2xl overflow-hidden border border-mono-700">
+      <div class="bg-mono-900 w-full flex flex-col">
+        <div class="p-4 border-b border-mono-800 flex items-center gap-3">
+          <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-mono-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+          </svg>
+          <input type="text" id="cmd-input" placeholder="Search commands or jump to..." class="w-full bg-transparent border-none text-white focus:outline-none focus:ring-0 text-lg" autocomplete="off" />
+          <div class="text-mono-500 text-xs px-2 py-1 bg-mono-800 rounded border border-mono-700">ESC</div>
+        </div>
+        <ul id="cmd-list" class="max-h-[60vh] overflow-y-auto py-2">
+          <!-- Navigation Links -->
+          <li data-name="Dashboard Home" class="cmd-item active bg-accent/10 px-4 py-3 cursor-pointer flex items-center gap-3 border-l-2 border-accent transition-colors">
+            <span class="text-accent">🏠</span>
+            <a href="/artist/dashboard" class="text-white font-medium flex-1 outline-none">Dashboard Home</a>
+          </li>
+          <li data-name="View Public Hub Storefront" class="cmd-item px-4 py-3 cursor-pointer flex items-center gap-3 border-l-2 border-transparent hover:bg-mono-800 transition-colors">
+            <span class="text-mono-400">🌐</span>
+            <a href={`/clients/artists/${artist.slug}/public`} class="text-white font-medium flex-1 outline-none">View Public Hub</a>
+          </li>
+          <li data-name="Account Settings Profile" class="cmd-item px-4 py-3 cursor-pointer flex items-center gap-3 border-l-2 border-transparent hover:bg-mono-800 transition-colors">
+            <span class="text-mono-400">⚙️</span>
+            <a href="#" class="text-white font-medium flex-1 outline-none">Account Settings</a>
+          </li>
+          <li data-name="Log Out Sign Out" class="cmd-item px-4 py-3 cursor-pointer flex items-center gap-3 border-l-2 border-transparent hover:bg-mono-800 transition-colors">
+            <span class="text-mono-400">🚪</span>
+            <a href="/api/auth/logout" class="text-white font-medium flex-1 outline-none text-red-400">Log Out</a>
+          </li>
+        </ul>
+      </div>
+    </dialog>
+
+    <script is:inline>
+      {
+        const dialog = document.getElementById('cmd-palette');
+        const input = document.getElementById('cmd-input');
+        const list = document.getElementById('cmd-list');
+        const items = Array.from(document.querySelectorAll('.cmd-item'));
+        let selectedIndex = 0;
+
+        // Toggle Dialog
+        document.addEventListener('keydown', (e) => {
+          if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+            e.preventDefault();
+            if (dialog.open) {
+              dialog.close();
+            } else {
+              dialog.showModal();
+              input.value = '';
+              filterList();
+              input.focus();
+            }
+          }
+        });
+
+        // Filter and Navigate
+        input.addEventListener('input', filterList);
+        input.addEventListener('keydown', (e) => {
+          const visibleItems = items.filter(item => item.style.display !== 'none');
+          
+          if (e.key === 'ArrowDown') {
+            e.preventDefault();
+            selectedIndex = (selectedIndex + 1) % visibleItems.length;
+            updateSelection(visibleItems);
+          } else if (e.key === 'ArrowUp') {
+            e.preventDefault();
+            selectedIndex = (selectedIndex - 1 + visibleItems.length) % visibleItems.length;
+            updateSelection(visibleItems);
+          } else if (e.key === 'Enter') {
+            e.preventDefault();
+            if (visibleItems[selectedIndex]) {
+              visibleItems[selectedIndex].querySelector('a').click();
+            }
+          }
+        });
+
+        // Allow clicking items
+        items.forEach(item => {
+          item.addEventListener('click', () => item.querySelector('a').click());
+          item.addEventListener('mouseover', () => {
+            const visibleItems = items.filter(i => i.style.display !== 'none');
+            selectedIndex = visibleItems.indexOf(item);
+            updateSelection(visibleItems);
+          });
+        });
+
+        // Close on backdrop click
+        dialog.addEventListener('click', (e) => {
+          const rect = dialog.getBoundingClientRect();
+          if (e.clientX < rect.left || e.clientX > rect.right || e.clientY < rect.top || e.clientY > rect.bottom) {
+            dialog.close();
+          }
+        });
+
+        function filterList() {
+          const query = input.value.toLowerCase();
+          
+          items.forEach((item) => {
+            const name = item.getAttribute('data-name').toLowerCase();
+            if (name.includes(query)) {
+              item.style.display = 'flex';
+            } else {
+              item.style.display = 'none';
+            }
+          });
+          
+          const visibleItems = items.filter(item => item.style.display !== 'none');
+          selectedIndex = 0;
+          updateSelection(visibleItems);
+        }
+
+        function updateSelection(visibleItems) {
+          items.forEach(item => {
+            item.classList.remove('bg-accent/10', 'border-accent');
+            item.classList.add('border-transparent');
+            const icon = item.querySelector('span');
+            if(icon.classList.contains('text-accent')) {
+               icon.classList.remove('text-accent');
+               icon.classList.add('text-mono-400');
+            }
+          });
+          
+          if (visibleItems[selectedIndex]) {
+            const selected = visibleItems[selectedIndex];
+            selected.classList.remove('border-transparent', 'hover:bg-mono-800');
+            selected.classList.add('bg-accent/10', 'border-accent');
+            const icon = selected.querySelector('span');
+            icon.classList.remove('text-mono-400');
+            icon.classList.add('text-accent');
+            selected.scrollIntoView({ block: 'nearest' });
+          }
+        }
       }
     </script>
   </body>
