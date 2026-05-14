@@ -1,6 +1,7 @@
 ---
 // Server-Side Fetch & Logic Layer
 import { getArtistBySlug } from '../../../../../tools/getArtistBySlug';
+import { query } from '../../../../../server/db';
 import AlbumCard from '../../../../../components/AlbumCard.astro';
 import Header from '../../../../../components/Header.astro';
 import '../../../../../styles/global.css';
@@ -8,8 +9,42 @@ import '../../../../../styles/global.css';
 const { slug } = Astro.params;
 const artist = await getArtistBySlug(slug as string);
 
-const artistName = artist?.name || slug || 'Unknown Artist';
-const accentColor = artist?.accent_color_hex || '#3b82f6'; // Default to a standard blue
+if (!artist) {
+  return Astro.redirect('/');
+}
+
+const artistName = artist.name;
+const accentColor = artist.accent_color_hex || '#3b82f6'; // Default to a standard blue
+
+// Fetch Posts
+const postsResult = await query(`
+  SELECT content, created_at 
+  FROM artist_posts 
+  WHERE artist_human_id = $1 
+  ORDER BY created_at DESC 
+  LIMIT 5
+`, [artist.id]);
+const posts = postsResult.rows;
+
+// Fetch Top Albums
+const albumsResult = await query(`
+  SELECT id, title, album_type, genre, price_cents, cover_url 
+  FROM albums 
+  WHERE artist_human_id = $1 
+  ORDER BY created_at DESC 
+  LIMIT 3
+`, [artist.id]);
+const albums = albumsResult.rows;
+
+// Fetch Upcoming Events
+const eventsResult = await query(`
+  SELECT title, event_date, venue, location, ticket_url 
+  FROM artist_events 
+  WHERE artist_human_id = $1 AND event_date >= CURRENT_DATE
+  ORDER BY event_date ASC 
+  LIMIT 10
+`, [artist.id]);
+const events = eventsResult.rows;
 ---
 
 <html lang="en">
@@ -29,32 +64,186 @@ const accentColor = artist?.accent_color_hex || '#3b82f6'; // Default to a stand
     
     <script src="../../../../../scripts/hotwire.ts"></script>
   </head>
-  <body class="bg-mono-950 text-mono-50 min-h-screen">
+  <body class="bg-mono-950 text-mono-50 min-h-screen scroll-smooth">
     
     <Header artistSlug={slug as string} artistName={artistName as string} />
 
-    <main class="max-w-4xl mx-auto px-6 py-20 flex flex-col items-center text-center gap-8">
-      
-      <div class="w-32 h-32 rounded-full shadow-[0_0_40px_rgba(0,0,0,0.5)] border-4 border-mono-800 relative overflow-hidden" style={`border-color: ${accentColor}`}>
-        <!-- Placeholder for Avatar -->
-        <div class="absolute inset-0 flex items-center justify-center bg-mono-900 text-mono-600 text-4xl font-black uppercase">
-          {artistName.charAt(0)}
+    <!-- Hub Sticky Navigation -->
+    <nav class="sticky top-0 z-40 bg-mono-950/80 backdrop-blur-md border-b border-mono-800">
+      <div class="max-w-4xl mx-auto px-6 py-4 flex items-center justify-between">
+        <span class="font-black text-lg tracking-tight" style={`color: ${accentColor}`}>{artistName}</span>
+        <div class="flex gap-4 md:gap-8 text-sm font-bold text-mono-400">
+          <a href="#about" class="hover:text-white transition-colors">About</a>
+          <a href="#music" class="hover:text-white transition-colors">Music</a>
+          <a href="#tour" class="hover:text-white transition-colors">Tour</a>
+          <a href="#updates" class="hover:text-white transition-colors">Updates</a>
+          <a href="#contact" class="hover:text-white transition-colors">Contact</a>
         </div>
       </div>
+    </nav>
 
-      <h2 class="text-5xl md:text-7xl font-black tracking-tighter">
-        {artistName}
-      </h2>
+    <main class="max-w-4xl mx-auto px-6 flex flex-col items-center">
       
-      <p class="text-xl text-mono-400 max-w-2xl leading-relaxed">
-        Welcome to my official digital hub. All my latest releases, exclusive masters, and merchandise are available directly through my Me-Commerce storefront.
-      </p>
+      <!-- HERO SECTION -->
+      <section class="min-h-[70vh] flex flex-col justify-center items-center text-center gap-8 py-20 w-full border-b border-mono-800">
+        <div class="w-40 h-40 md:w-56 md:h-56 rounded-full shadow-[0_0_60px_rgba(0,0,0,0.8)] border-4 border-mono-800 relative overflow-hidden" style={`border-color: ${accentColor}`}>
+          <!-- Placeholder for Avatar -->
+          <div class="absolute inset-0 flex items-center justify-center bg-mono-900 text-mono-600 text-6xl md:text-8xl font-black uppercase">
+            {artistName.charAt(0)}
+          </div>
+        </div>
 
-      <a href={`/clients/artists/${slug}/me-commerce`} class="mt-8 px-8 py-4 rounded-full font-bold text-mono-950 transition-transform hover:scale-105 hover:shadow-lg shadow-accent/20" style={`background-color: ${accentColor}`}>
-        Enter Store &rarr;
-      </a>
+        <h2 class="text-6xl md:text-8xl font-black tracking-tighter">
+          {artistName}
+        </h2>
+        
+        <p class="text-xl md:text-2xl text-mono-400 max-w-2xl leading-relaxed">
+          Welcome to my official digital hub.
+        </p>
+
+        <a href={`/clients/artists/${slug}/me-commerce`} class="mt-4 px-10 py-5 rounded-full font-black text-mono-950 transition-transform hover:scale-105 hover:shadow-[0_0_30px_rgba(var(--color-accent-dynamic),0.4)] text-lg" style={`background-color: ${accentColor}`}>
+          Enter Storefront &rarr;
+        </a>
+      </section>
+
+      <!-- ABOUT SECTION -->
+      <section id="about" class="w-full py-24 border-b border-mono-800">
+        <h3 class="text-4xl font-black mb-8 flex items-center gap-4">
+          <span class="w-8 h-1" style={`background-color: ${accentColor}`}></span>
+          Biography
+        </h3>
+        {artist.bio ? (
+          <div class="prose prose-invert prose-lg max-w-none text-mono-300">
+            {artist.bio.split('\n').map(paragraph => (
+              <p class="mb-4 leading-relaxed">{paragraph}</p>
+            ))}
+          </div>
+        ) : (
+          <p class="text-mono-500 italic text-lg">Official biography coming soon.</p>
+        )}
+      </section>
+
+      <!-- MUSIC & DISCOGRAPHY SECTION -->
+      <section id="music" class="w-full py-24 border-b border-mono-800">
+        <div class="flex justify-between items-end mb-12">
+          <h3 class="text-4xl font-black flex items-center gap-4">
+            <span class="w-8 h-1" style={`background-color: ${accentColor}`}></span>
+            Latest Releases
+          </h3>
+          <a href={`/clients/artists/${slug}/me-commerce`} class="text-sm font-bold hover:underline" style={`color: ${accentColor}`}>View All Music</a>
+        </div>
+        
+        {albums.length === 0 ? (
+          <p class="text-mono-500 italic text-lg">No albums released yet.</p>
+        ) : (
+          <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+            {albums.map(album => (
+              <AlbumCard 
+                title={album.title}
+                artistName={artistName}
+                artistSlug={slug as string}
+                price={(album.price_cents / 100).toFixed(2)}
+                albumCoverUrl={album.cover_url}
+                genre={album.genre || album.album_type}
+                albumId={album.id}
+              />
+            ))}
+          </div>
+        )}
+      </section>
+
+      <!-- TOUR DATES SECTION -->
+      <section id="tour" class="w-full py-24 border-b border-mono-800">
+        <h3 class="text-4xl font-black mb-12 flex items-center gap-4">
+          <span class="w-8 h-1" style={`background-color: ${accentColor}`}></span>
+          Upcoming Shows
+        </h3>
+        
+        {events.length === 0 ? (
+          <p class="text-mono-500 italic text-lg">No upcoming shows announced yet.</p>
+        ) : (
+          <div class="flex flex-col max-w-4xl mx-auto border border-mono-800 rounded-3xl overflow-hidden bg-mono-900">
+            {events.map((event, index) => (
+              <div class={`flex flex-col md:flex-row items-center justify-between p-6 ${index !== events.length - 1 ? 'border-b border-mono-800' : ''} hover:bg-mono-800 transition-colors`}>
+                <div class="flex items-center gap-8 w-full md:w-auto">
+                  <div class="flex flex-col items-center justify-center min-w-[80px]">
+                    <span class="text-sm font-bold text-mono-400 uppercase tracking-widest">{new Date(event.event_date).toLocaleDateString(undefined, { month: 'short' })}</span>
+                    <span class="text-3xl font-black">{new Date(event.event_date).getDate()}</span>
+                  </div>
+                  <div class="flex flex-col">
+                    <h4 class="text-xl font-bold">{event.title}</h4>
+                    <span class="text-mono-400">{event.venue} {event.location ? `- ${event.location}` : ''}</span>
+                  </div>
+                </div>
+                
+                {event.ticket_url ? (
+                  <a href={event.ticket_url} target="_blank" rel="noopener noreferrer" class="mt-4 md:mt-0 px-6 py-2 rounded-full font-bold text-sm bg-mono-950 text-white border border-mono-700 hover:border-mono-500 transition-colors w-full md:w-auto text-center">
+                    Tickets
+                  </a>
+                ) : (
+                  <div class="mt-4 md:mt-0 px-6 py-2 rounded-full font-bold text-sm text-mono-500 border border-mono-800 bg-mono-950/50 cursor-not-allowed w-full md:w-auto text-center">
+                    TBA
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
+
+      <!-- ARTIST UPDATES FEED SECTION -->
+      <section id="updates" class="w-full py-24 border-b border-mono-800">
+        <h3 class="text-4xl font-black mb-12 flex items-center gap-4">
+          <span class="w-8 h-1" style={`background-color: ${accentColor}`}></span>
+          Live Updates
+        </h3>
+        
+        {posts.length === 0 ? (
+          <p class="text-mono-500 italic text-lg">No updates from {artistName} yet.</p>
+        ) : (
+          <div class="flex flex-col gap-8 max-w-3xl mx-auto">
+            {posts.map(post => (
+              <article class="bg-mono-900 border border-mono-800 rounded-3xl p-8 relative shadow-lg hover:border-mono-700 transition-colors">
+                <div class="absolute -top-4 -left-4">
+                  <div class="w-12 h-12 rounded-full bg-mono-950 border-2 border-mono-800 flex items-center justify-center text-sm font-black" style={`border-color: ${accentColor}; color: ${accentColor}`}>
+                    {artistName.charAt(0)}
+                  </div>
+                </div>
+                <div class="flex flex-col gap-4">
+                  <time class="text-xs font-bold text-mono-500 uppercase tracking-widest pl-6">
+                    {new Date(post.created_at).toLocaleDateString(undefined, { month: 'long', day: 'numeric', year: 'numeric' })} 
+                    at {new Date(post.created_at).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })}
+                  </time>
+                  <p class="text-xl text-mono-100 whitespace-pre-wrap leading-relaxed">{post.content}</p>
+                </div>
+              </article>
+            ))}
+          </div>
+        )}
+      </section>
+
+      <!-- CONTACT / EPK SECTION -->
+      <section id="contact" class="w-full py-24 text-center flex flex-col items-center">
+        <h3 class="text-4xl font-black mb-6">Booking & Press</h3>
+        <p class="text-mono-400 text-lg max-w-xl mb-8">For booking inquiries, press materials, or to access the Electronic Press Kit (EPK), please reach out through the official channels below.</p>
+        
+        <div class="flex gap-4">
+          {artist.website && (
+            <a href={artist.website} target="_blank" rel="noopener noreferrer" class="px-6 py-3 rounded-full border-2 border-mono-700 hover:border-mono-500 font-bold transition-colors">
+              Official Website
+            </a>
+          )}
+          <a href={`mailto:booking@the-pocket.com`} class="px-6 py-3 rounded-full font-bold text-mono-950 transition-transform hover:scale-105" style={`background-color: ${accentColor}`}>
+            Contact Management
+          </a>
+        </div>
+      </section>
 
     </main>
     
+    <footer class="w-full py-8 text-center border-t border-mono-900 text-mono-600 text-sm">
+      &copy; {new Date().getFullYear()} {artistName}. Powered by The Pocket.
+    </footer>
+
   </body>
 </html>

@@ -5,6 +5,8 @@ export interface Artist {
   slug: string;
   name: string;
   accent_color_hex: string;
+  bio?: string;
+  website?: string;
 }
 
 /**
@@ -14,7 +16,7 @@ export interface Artist {
 export async function getArtistBySlug(slug: string): Promise<Artist | null> {
   try {
     const result = await query(
-      `SELECT human_id as id, slug, stage_name as name, accent_color_hex FROM artists WHERE slug = $1 LIMIT 1;`,
+      `SELECT human_id as id, slug, stage_name as name, accent_color_hex, bio, website FROM artists WHERE slug = $1 LIMIT 1;`,
       [slug]
     );
 
