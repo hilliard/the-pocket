@@ -79,11 +79,18 @@ export const POST: APIRoute = async ({ request, cookies, redirect }) => {
     // Read session to see if buyer is logged in
     const sessionCookie = cookies.get('pocket_session')?.value;
     let buyerHumanId = null;
+    let userEmail = undefined;
     if (sessionCookie) {
       const { verifySession } = await import('../../../server/auth');
       const verified = await verifySession(sessionCookie);
       if (verified) {
         buyerHumanId = verified.humanId;
+        const { query } = await import('../../../server/db');
+        const userResult = await query(
+          `SELECT email FROM email_history WHERE human_id = $1 AND effective_to IS NULL ORDER BY effective_from DESC LIMIT 1`, 
+          [buyerHumanId]
+        );
+        userEmail = userResult.rows[0]?.email;
       }
     }
 
@@ -93,6 +100,7 @@ export const POST: APIRoute = async ({ request, cookies, redirect }) => {
       mode: 'payment',
       success_url: new URL('/checkout/success?session_id={CHECKOUT_SESSION_ID}', request.url).toString(),
       cancel_url: new URL('/cart', request.url).toString(),
+      customer_email: userEmail,
       metadata: {
         artist_human_id: artistId,
         buyer_human_id: buyerHumanId || '',

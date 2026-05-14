@@ -208,7 +208,8 @@ CREATE TYPE subscription_status AS ENUM ('active', 'past_due', 'canceled', 'pend
 -- Subscriptions Lifecycle Table
 CREATE TABLE IF NOT EXISTS subscriptions (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    customer_human_id UUID NOT NULL REFERENCES customers(human_id) ON DELETE CASCADE,
+    customer_human_id UUID NOT NULL REFERENCES humans(id) ON DELETE CASCADE,
+    stripe_subscription_id VARCHAR(255) UNIQUE,
     plan_id VARCHAR(100),
     status subscription_status NOT NULL DEFAULT 'pending',
     start_date TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,

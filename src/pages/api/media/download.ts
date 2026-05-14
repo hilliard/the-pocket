@@ -26,10 +26,11 @@ export const GET: APIRoute = async ({ request, cookies, url }) => {
 
   // Validate ownership
   const authCheck = await query(
-    `SELECT oi.id FROM order_items oi
+    `SELECT s.id FROM songs s
+     LEFT JOIN album_songs asg ON s.id = asg.song_id
+     JOIN order_items oi ON (oi.entity_type = 'song' AND oi.entity_id = s.id) OR (oi.entity_type = 'album' AND oi.entity_id = asg.album_id)
      JOIN orders o ON o.id = oi.order_id
-     LEFT JOIN songs s ON oi.entity_type = 'song' AND oi.entity_id = s.id
-     WHERE (o.customer_human_id = $1 OR o.customer_email = 'grammyhaynes0727@gmail.com') 
+     WHERE (o.customer_human_id = $1 OR o.customer_email = 'hilliards@gmail.com') 
        AND s.master_audio_path = $2
        AND o.status = 'paid'
      UNION

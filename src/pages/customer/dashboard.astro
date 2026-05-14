@@ -29,6 +29,22 @@ if (subscription?.status === 'trialing' && subscription.trial_end) {
   const diffTime = new Date(subscription.trial_end).getTime() - new Date().getTime();
   trialDaysLeft = Math.max(0, Math.ceil(diffTime / (1000 * 60 * 60 * 24)));
 }
+
+// Fetch owned songs
+const ownedSongsResult = await query(`
+  SELECT DISTINCT s.id, s.title, a.title as album_title, art.stage_name as artist_name
+  FROM songs s
+  LEFT JOIN album_songs als ON s.id = als.song_id
+  LEFT JOIN albums a ON als.album_id = a.id
+  JOIN artists art ON s.artist_human_id = art.human_id
+  JOIN orders o ON o.customer_human_id = $1 AND o.status = 'paid'
+  JOIN order_items oi ON oi.order_id = o.id
+  WHERE (oi.entity_type = 'song' AND oi.entity_id = s.id)
+     OR (oi.entity_type = 'album' AND oi.entity_id = a.id)
+  ORDER BY s.title ASC
+`, [session.humanId]);
+
+const ownedSongs = ownedSongsResult.rows;
 ---
 
 <html lang="en">
@@ -50,12 +66,33 @@ if (subscription?.status === 'trialing' && subscription.trial_end) {
 
       <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
         
-        <div class="bg-mono-900 border border-mono-800 p-8 rounded-3xl">
-          <h2 class="text-2xl font-bold mb-4">Your Collection</h2>
-          <p class="text-mono-400 mb-6">You haven't purchased any albums or songs yet. Go check out the global marketplace to discover independent artists.</p>
-          <a href="/store" class="inline-block bg-accent text-mono-950 font-bold px-6 py-3 rounded-xl hover:brightness-110 transition-colors">
-            Browse Store
-          </a>
+        <div class="bg-mono-900 border border-mono-800 p-8 rounded-3xl md:col-span-2 shadow-xl">
+          <h2 class="text-2xl font-bold mb-6 text-accent">Your Music Collection</h2>
+          {ownedSongs.length === 0 ? (
+            <div>
+              <p class="text-mono-400 mb-6 text-lg">You haven't purchased any albums or songs yet. Go check out the global marketplace to discover independent artists.</p>
+              <a href="/store" class="inline-flex items-center gap-2 bg-accent text-mono-950 font-bold px-6 py-3 rounded-xl hover:brightness-110 transition-all shadow-lg hover:scale-105 active:scale-95">
+                Browse Store
+              </a>
+            </div>
+          ) : (
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {ownedSongs.map(song => (
+                <div class="flex flex-col sm:flex-row sm:items-center justify-between p-5 border border-mono-800 bg-mono-950 rounded-2xl hover:border-mono-600 transition-all shadow-md group">
+                  <div class="mb-4 sm:mb-0">
+                    <h3 class="font-black text-lg text-white group-hover:text-accent transition-colors">{song.title}</h3>
+                    <p class="text-sm text-mono-400">{song.artist_name} {song.album_title ? `• ${song.album_title}` : ''}</p>
+                  </div>
+                  <div class="flex gap-3 shrink-0">
+                    <a href={`/api/customer/download?song_id=${song.id}`} download class="bg-mono-800 hover:bg-mono-700 border border-mono-700 text-white px-4 py-2.5 rounded-xl font-bold text-sm flex items-center justify-center gap-2 transition-all hover:-translate-y-0.5 w-full sm:w-auto">
+                      <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
+                      Download Master
+                    </a>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
 
         <!-- Subscription Settings -->
@@ -76,34 +113,50 @@ if (subscription?.status === 'trialing' && subscription.trial_end) {
             <p class="text-mono-400 mb-6">You do not have an active subscription.</p>
           )}
 
-          <div class="space-y-4">
-            <h4 class="font-bold text-sm text-mono-500 uppercase tracking-wider">Available Plans</h4>
-            
-            <div class="flex flex-col gap-3">
-              <div class="flex items-center justify-between p-4 border border-mono-700 rounded-xl bg-mono-950">
-                <div>
-                  <h4 class="font-bold">Monthly Fan Plan</h4>
-                  <p class="text-xs text-mono-400">Stream all music ad-free</p>
+          {subscription?.status === 'active' ? (
+            <div class="space-y-4 mt-6">
+              <form action="/api/checkout/customer-portal" method="POST">
+                <button type="submit" class="bg-mono-800 hover:bg-mono-700 font-bold px-6 py-3 rounded-xl transition-colors border border-mono-600">
+                  Manage Subscription in Stripe
+                </button>
+              </form>
+            </div>
+          ) : (
+            <div class="space-y-4">
+              <h4 class="font-bold text-sm text-mono-500 uppercase tracking-wider">Available Plans</h4>
+              
+              <div class="flex flex-col gap-3">
+                <div class="flex items-center justify-between p-4 border border-mono-700 rounded-xl bg-mono-950">
+                  <div>
+                    <h4 class="font-bold">Monthly Fan Plan</h4>
+                    <p class="text-xs text-mono-400">Stream all music ad-free</p>
+                  </div>
+                  <div class="flex items-center gap-4">
+                    <span class="font-black text-lg">$9.99<span class="text-sm font-normal text-mono-400">/mo</span></span>
+                    <form action="/api/checkout/create-subscription" method="POST">
+                      <input type="hidden" name="planId" value="monthly" />
+                      <button type="submit" class="bg-mono-800 hover:bg-mono-700 font-bold px-4 py-2 rounded-lg text-sm transition-colors border border-mono-600 cursor-pointer">Upgrade</button>
+                    </form>
+                  </div>
                 </div>
-                <div class="flex items-center gap-4">
-                  <span class="font-black text-lg">$9.99<span class="text-sm font-normal text-mono-400">/mo</span></span>
-                  <button class="bg-mono-800 hover:bg-mono-700 font-bold px-4 py-2 rounded-lg text-sm transition-colors border border-mono-600">Upgrade</button>
-                </div>
-              </div>
 
-              <div class="flex items-center justify-between p-4 border border-accent/50 rounded-xl bg-accent/5 shadow-[0_0_15px_rgba(168,85,247,0.1)] relative overflow-hidden">
-                <div class="absolute -right-6 top-2 bg-accent text-mono-950 text-[10px] font-black uppercase py-1 px-8 rotate-45">Best Value</div>
-                <div>
-                  <h4 class="font-bold text-accent">Yearly Fan Plan</h4>
-                  <p class="text-xs text-mono-400">Save 20% compared to monthly</p>
-                </div>
-                <div class="flex items-center gap-4 relative z-10">
-                  <span class="font-black text-lg">$90.00<span class="text-sm font-normal text-mono-400">/yr</span></span>
-                  <button class="bg-accent text-mono-950 hover:brightness-110 font-bold px-4 py-2 rounded-lg text-sm transition-colors">Upgrade</button>
+                <div class="flex items-center justify-between p-4 border border-accent/50 rounded-xl bg-accent/5 shadow-[0_0_15px_rgba(168,85,247,0.1)] relative overflow-hidden">
+                  <div class="absolute -right-6 top-2 bg-accent text-mono-950 text-[10px] font-black uppercase py-1 px-8 rotate-45">Best Value</div>
+                  <div>
+                    <h4 class="font-bold text-accent">Yearly Fan Plan</h4>
+                    <p class="text-xs text-mono-400">Save 20% compared to monthly</p>
+                  </div>
+                  <div class="flex items-center gap-4 relative z-10">
+                    <span class="font-black text-lg">$90.00<span class="text-sm font-normal text-mono-400">/yr</span></span>
+                    <form action="/api/checkout/create-subscription" method="POST">
+                      <input type="hidden" name="planId" value="yearly" />
+                      <button type="submit" class="bg-accent text-mono-950 hover:brightness-110 font-bold px-4 py-2 rounded-lg text-sm transition-colors cursor-pointer">Upgrade</button>
+                    </form>
+                  </div>
                 </div>
               </div>
             </div>
-          </div>
+          )}
         </div>
 
         <!-- Artist Upgrade -->

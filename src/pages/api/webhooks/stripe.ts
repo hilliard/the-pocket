@@ -27,52 +27,108 @@ export const POST: APIRoute = async ({ request }) => {
 
   if (event.type === 'checkout.session.completed') {
     const session = event.data.object;
+    const metadata = session.metadata || {};
 
-    // Fulfill the order
-    try {
-      const stripeSessionId = session.id;
-      const customerEmail = session.customer_details?.email || session.customer_email || 'unknown@example.com';
-      const totalCents = session.amount_total || 0;
-      const metadata = session.metadata || {};
-      
-      const artistHumanId = metadata.artist_human_id;
-      const buyerHumanId = metadata.buyer_human_id || null;
-      const cartItemsStr = metadata.cart_items || '';
+    // -----------------------------------------------------------------
+    // HANDLE ONE-TIME ORDERS
+    // -----------------------------------------------------------------
+    if (session.mode === 'payment') {
+      try {
+        const stripeSessionId = session.id;
+        const customerEmail = session.customer_details?.email || session.customer_email || 'unknown@example.com';
+        const totalCents = session.amount_total || 0;
+        
+        const artistHumanId = metadata.artist_human_id;
+        const buyerHumanId = metadata.buyer_human_id || null;
+        const cartItemsStr = metadata.cart_items || '';
 
-      // Create Order
-      const orderResult = await query(
-        `INSERT INTO orders (artist_human_id, customer_human_id, stripe_session_id, customer_email, subtotal_cents, total_cents, status)
-         VALUES ($1, $2, $3, $4, $5, $6, 'paid')
-         RETURNING id`,
-        [artistHumanId, buyerHumanId, stripeSessionId, customerEmail, totalCents, totalCents]
-      );
+        // Create Order
+        const orderResult = await query(
+          `INSERT INTO orders (artist_human_id, customer_human_id, stripe_session_id, customer_email, subtotal_cents, total_cents, status)
+           VALUES ($1, $2, $3, $4, $5, $6, 'paid')
+           RETURNING id`,
+          [artistHumanId, buyerHumanId, stripeSessionId, customerEmail, totalCents, totalCents]
+        );
 
-      const orderId = orderResult.rows[0].id;
+        const orderId = orderResult.rows[0].id;
 
-      // Spawn Order Items
-      if (cartItemsStr) {
-        const items = cartItemsStr.split(',');
-        for (const item of items) {
-          const [type, id, priceStr] = item.split(':');
-          const price = parseInt(priceStr, 10);
-          
-          await query(
-            `INSERT INTO order_items (order_id, entity_type, entity_id, price_cents)
-             VALUES ($1, $2, $3, $4)`,
-            [orderId, type, id, price]
-          );
+        // Spawn Order Items
+        if (cartItemsStr) {
+          const items = cartItemsStr.split(',');
+          for (const item of items) {
+            const [type, id, priceStr] = item.split(':');
+            const price = parseInt(priceStr, 10);
+            
+            await query(
+              `INSERT INTO order_items (order_id, entity_type, entity_id, price_cents)
+               VALUES ($1, $2, $3, $4)`,
+              [orderId, type, id, price]
+            );
 
-          // Inventory reduction for physical goods
-          if (type === 'merch') {
-            await query(`UPDATE merch SET inventory_count = GREATEST(inventory_count - 1, 0) WHERE id = $1`, [id]);
+            // Inventory reduction for physical goods
+            if (type === 'merch') {
+              await query(`UPDATE merch SET inventory_count = GREATEST(inventory_count - 1, 0) WHERE id = $1`, [id]);
+            }
           }
         }
-      }
 
-      console.log(`[WEBHOOK SUCCESS]: Order ${orderId} fulfilled for ${customerEmail}`);
-    } catch (dbErr: any) {
-      console.error('[WEBHOOK DB ERROR]:', dbErr);
-      return new Response(`Database Error: ${dbErr.message}`, { status: 500 });
+        console.log(`[WEBHOOK SUCCESS]: Order ${orderId} fulfilled for ${customerEmail}`);
+      } catch (dbErr: any) {
+        console.error('[WEBHOOK DB ERROR]:', dbErr);
+        return new Response(`Database Error: ${dbErr.message}`, { status: 500 });
+      }
+    }
+    
+    // -----------------------------------------------------------------
+    // HANDLE SUBSCRIPTIONS
+    // -----------------------------------------------------------------
+    else if (session.mode === 'subscription') {
+      try {
+        const stripeSubscriptionId = session.subscription;
+        const buyerHumanId = metadata.buyer_human_id;
+        const planId = metadata.subscription_plan; // 'monthly' or 'yearly'
+
+        // Fetch subscription to get current_period_end
+        const subscription = await stripe.subscriptions.retrieve(stripeSubscriptionId as string);
+        const currentPeriodEnd = new Date(subscription.current_period_end * 1000).toISOString();
+
+        await query(
+          `INSERT INTO subscriptions (customer_human_id, stripe_subscription_id, plan_id, status, current_period_end)
+           VALUES ($1, $2, $3, $4, $5)
+           ON CONFLICT (stripe_subscription_id) 
+           DO UPDATE SET status = EXCLUDED.status, current_period_end = EXCLUDED.current_period_end`,
+          [buyerHumanId, stripeSubscriptionId, planId, subscription.status, currentPeriodEnd]
+        );
+
+        console.log(`[WEBHOOK SUCCESS]: Subscription created for ${buyerHumanId}`);
+      } catch (dbErr: any) {
+        console.error('[WEBHOOK SUB ERROR]:', dbErr);
+        return new Response(`Database Error: ${dbErr.message}`, { status: 500 });
+      }
+    }
+  }
+
+  // -----------------------------------------------------------------
+  // HANDLE SUBSCRIPTION RENEWALS
+  // -----------------------------------------------------------------
+  if (event.type === 'invoice.payment_succeeded') {
+    const invoice = event.data.object;
+    if (invoice.subscription) {
+      try {
+        const stripeSubscriptionId = invoice.subscription;
+        const subscription = await stripe.subscriptions.retrieve(stripeSubscriptionId as string);
+        const currentPeriodEnd = new Date(subscription.current_period_end * 1000).toISOString();
+        
+        await query(
+          `UPDATE subscriptions 
+           SET status = $1, current_period_end = $2 
+           WHERE stripe_subscription_id = $3`,
+          [subscription.status, currentPeriodEnd, stripeSubscriptionId]
+        );
+        console.log(`[WEBHOOK SUCCESS]: Subscription ${stripeSubscriptionId} renewed until ${currentPeriodEnd}`);
+      } catch (err) {
+        console.error('[WEBHOOK RENEWAL ERROR]:', err);
+      }
     }
   }
 

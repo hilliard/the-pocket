@@ -1,6 +1,7 @@
 ---
 import Header from '../../components/Header.astro';
 import { query } from '../../server/db';
+import { stripe } from '../../tools/stripe';
 import '../../styles/global.css';
 
 const sessionId = Astro.url.searchParams.get('session_id');
@@ -9,25 +10,70 @@ if (!sessionId) {
   return Astro.redirect('/');
 }
 
-// Check if the order has been created by the webhook yet
-let orderResult = await query(
-  `SELECT id, total_cents, customer_email, status, created_at 
-   FROM orders 
-   WHERE stripe_session_id = $1`,
-  [sessionId]
-);
+// Fetch session from Stripe to determine mode
+let session;
+try {
+  session = await stripe.checkout.sessions.retrieve(sessionId);
+} catch (e) {
+  return Astro.redirect('/');
+}
 
-let order = orderResult.rows[0];
+const isSubscription = session.mode === 'subscription';
 
-// DEVELOPMENT HACK / WEBHOOK FALLBACK:
-// If the order isn't in our DB yet, but they made it to the success page, 
-// let's fetch the session directly from Stripe to verify payment and fulfill it manually!
-if (!order) {
-  try {
-    const { stripe } = await import('../../tools/stripe');
-    const session = await stripe.checkout.sessions.retrieve(sessionId);
-    
-    if (session.payment_status === 'paid') {
+// ----------------------------------------------------
+// SUBSCRIPTION LOGIC
+// ----------------------------------------------------
+let subIsReady = false;
+if (isSubscription) {
+  const subResult = await query(
+    `SELECT id FROM subscriptions WHERE stripe_subscription_id = $1`,
+    [session.subscription]
+  );
+  subIsReady = subResult.rows.length > 0;
+
+  // DEVELOPMENT HACK / WEBHOOK FALLBACK
+  if (!subIsReady && session.payment_status === 'paid') {
+    try {
+      const stripeSubscriptionId = session.subscription;
+      const metadata = session.metadata || {};
+      const buyerHumanId = metadata.buyer_human_id;
+      const planId = metadata.subscription_plan;
+
+      const subscriptionData = await stripe.subscriptions.retrieve(stripeSubscriptionId as string);
+      const currentPeriodEnd = new Date(subscriptionData.current_period_end * 1000).toISOString();
+
+      await query(
+        `INSERT INTO subscriptions (customer_human_id, stripe_subscription_id, plan_id, status, current_period_end)
+         VALUES ($1, $2, $3, $4, $5)
+         ON CONFLICT (stripe_subscription_id) 
+         DO UPDATE SET status = EXCLUDED.status, current_period_end = EXCLUDED.current_period_end`,
+        [buyerHumanId, stripeSubscriptionId, planId, subscriptionData.status, currentPeriodEnd]
+      );
+      subIsReady = true;
+    } catch (err) {
+      console.error('Fallback subscription verification failed:', err);
+    }
+  }
+}
+
+// ----------------------------------------------------
+// STANDARD ORDER LOGIC
+// ----------------------------------------------------
+let order;
+let orderIsReady = false;
+
+if (!isSubscription) {
+  let orderResult = await query(
+    `SELECT id, total_cents, customer_email, status, created_at 
+     FROM orders 
+     WHERE stripe_session_id = $1`,
+    [sessionId]
+  );
+  order = orderResult.rows[0];
+
+  // DEVELOPMENT HACK / WEBHOOK FALLBACK
+  if (!order && session.payment_status === 'paid') {
+    try {
       const customerEmail = session.customer_details?.email || session.customer_email || 'unknown@example.com';
       const totalCents = session.amount_total || 0;
       const metadata = session.metadata || {};
@@ -36,7 +82,6 @@ if (!order) {
       const buyerHumanId = metadata.buyer_human_id || null;
       const cartItemsStr = metadata.cart_items || '';
 
-      // Create Order
       const newOrder = await query(
         `INSERT INTO orders (artist_human_id, customer_human_id, stripe_session_id, customer_email, subtotal_cents, total_cents, status)
          VALUES ($1, $2, $3, $4, $5, $6, 'paid')
@@ -47,7 +92,6 @@ if (!order) {
       
       order = newOrder.rows[0];
 
-      // Spawn Order Items
       if (cartItemsStr) {
         const items = cartItemsStr.split(',');
         for (const item of items) {
@@ -61,24 +105,24 @@ if (!order) {
           );
         }
       }
+    } catch (err) {
+      console.error('Fallback verification failed:', err);
     }
-  } catch (err) {
-    console.error('Fallback verification failed:', err);
+  }
+
+  orderIsReady = !!order;
+  if (orderIsReady) {
+    Astro.cookies.delete('pocket_cart', { path: '/' });
   }
 }
 
-const isReady = !!order;
-
-if (isReady) {
-  // Clear the cart cookie since they bought it
-  Astro.cookies.delete('pocket_cart', { path: '/' });
-}
+const isReady = isSubscription ? subIsReady : orderIsReady;
 ---
 
 <html lang="en">
   <head>
     <meta charset="utf-8" />
-    <title>{isReady ? 'Order Confirmed!' : 'Verifying Payment...'}</title>
+    <title>{isReady ? 'Confirmed!' : 'Verifying Payment...'}</title>
     <meta name="viewport" content="width=device-width" />
     {!isReady && <meta http-equiv="refresh" content="3" />}
   </head>
@@ -92,7 +136,22 @@ if (isReady) {
           <div class="flex flex-col items-center">
             <div class="w-16 h-16 border-4 border-mono-700 border-t-accent rounded-full animate-spin mb-6"></div>
             <h1 class="text-3xl font-black mb-2">Verifying Payment...</h1>
-            <p class="text-mono-400">Please wait while we confirm your order with Stripe.</p>
+            <p class="text-mono-400">Please wait while we confirm with Stripe.</p>
+          </div>
+        ) : isSubscription ? (
+          <div class="flex flex-col items-center animate-in fade-in zoom-in duration-500">
+            <div class="w-20 h-20 bg-accent/10 text-accent rounded-full flex items-center justify-center mb-6">
+              <svg xmlns="http://www.w3.org/2000/svg" class="h-10 w-10" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z" />
+              </svg>
+            </div>
+            
+            <h1 class="text-4xl font-black mb-2 text-white">Welcome to the Club!</h1>
+            <p class="text-mono-400 mb-8">Your Fan Plan is now active. You have unlocked unlimited high-quality streaming across the entire platform.</p>
+            
+            <a href="/dashboard" class="w-full bg-accent text-mono-950 font-bold py-4 rounded-xl hover:brightness-110 transition-all text-center block">
+              Go To Dashboard
+            </a>
           </div>
         ) : (
           <div class="flex flex-col items-center animate-in fade-in zoom-in duration-500">
@@ -120,8 +179,8 @@ if (isReady) {
               </div>
             </div>
 
-            <a href="/dashboard" class="w-full bg-accent text-mono-950 font-bold py-4 rounded-xl hover:brightness-110 transition-all text-center block">
-              Access Your Media
+            <a href="/library" class="w-full bg-accent text-mono-950 font-bold py-4 rounded-xl hover:brightness-110 transition-all text-center block">
+              View My Library
             </a>
           </div>
         )}

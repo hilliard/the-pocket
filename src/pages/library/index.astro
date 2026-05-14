@@ -30,7 +30,7 @@ const purchasedItemsResult = await query(
    LEFT JOIN albums a ON oi.entity_type = 'album' AND oi.entity_id = a.id
    LEFT JOIN songs s ON oi.entity_type = 'song' AND oi.entity_id = s.id
    LEFT JOIN merch m ON oi.entity_type = 'merch' AND oi.entity_id = m.id
-   WHERE (o.customer_human_id = $1 OR o.customer_email = 'grammyhaynes0727@gmail.com') 
+   WHERE (o.customer_human_id = $1 OR o.customer_email = 'hilliards@gmail.com') 
      AND o.status = 'paid'
    ORDER BY o.created_at DESC`,
   [session.humanId]
@@ -95,13 +95,21 @@ const items = purchasedItemsResult.rows;
                 
                 {item.entity_type === 'song' ? (
                   <div class="flex flex-col gap-3">
-                    <audio src={`/api/media/stream?type=master&path=${encodeURIComponent(item.master_audio_path)}`} controls class="w-full h-10 rounded-lg outline-none" controlsList="nodownload"></audio>
-                    <a href={`/api/media/download?path=${encodeURIComponent(item.master_audio_path)}&title=${encodeURIComponent(item.title)}`} target="_blank" class="w-full bg-mono-800 text-mono-50 font-bold py-3 rounded-xl hover:bg-mono-700 transition-colors flex items-center justify-center gap-2 border border-mono-700">
-                      <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-                      </svg>
-                      Download Master
-                    </a>
+                    {item.master_audio_path ? (
+                      <>
+                        <audio src={`/api/media/stream?type=master&path=${encodeURIComponent(item.master_audio_path)}`} controls class="w-full h-10 rounded-lg outline-none" controlsList="nodownload"></audio>
+                        <a href={`/api/media/download?path=${encodeURIComponent(item.master_audio_path)}&title=${encodeURIComponent(item.title)}`} target="_blank" class="w-full bg-mono-800 text-mono-50 font-bold py-3 rounded-xl hover:bg-mono-700 transition-colors flex items-center justify-center gap-2 border border-mono-700">
+                          <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                          </svg>
+                          Download Master
+                        </a>
+                      </>
+                    ) : (
+                      <div class="p-3 bg-mono-950 border border-mono-800 rounded-xl text-center">
+                        <span class="text-xs text-mono-500 italic font-bold">Audio file pending upload</span>
+                      </div>
+                    )}
                   </div>
                 ) : item.entity_type === 'album' ? (
                   <a href={`/library/albums/${item.entity_id}`} class="w-full bg-accent text-mono-950 font-bold py-3 rounded-xl hover:brightness-110 transition-colors flex items-center justify-center gap-2">

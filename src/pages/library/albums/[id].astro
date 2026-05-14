@@ -16,7 +16,7 @@ if (!session) return Astro.redirect('/login');
 const authCheck = await query(
   `SELECT o.id FROM orders o
    JOIN order_items oi ON o.id = oi.order_id
-   WHERE (o.customer_human_id = $1 OR o.customer_email = 'grammyhaynes0727@gmail.com')
+   WHERE (o.customer_human_id = $1 OR o.customer_email = 'hilliards@gmail.com')
      AND oi.entity_type = 'album' 
      AND oi.entity_id = $2
      AND o.status = 'paid'
@@ -104,23 +104,31 @@ const tracks = songsRes.rows;
                 </div>
               </div>
               <div class="col-span-12 md:col-span-6 flex flex-col xl:flex-row items-center gap-4 justify-end">
-                <audio 
-                  src={`/api/media/stream?type=master&path=${encodeURIComponent(track.master_audio_path)}`} 
-                  controls 
-                  controlsList="nodownload"
-                  class="w-full xl:w-64 h-10 rounded-md outline-none"
-                ></audio>
-                
-                <a 
-                  href={`/api/media/download?path=${encodeURIComponent(track.master_audio_path)}&title=${encodeURIComponent(track.title)}`}
-                  target="_blank"
-                  class="w-full xl:w-auto bg-mono-800 hover:bg-mono-700 text-white font-bold py-2 px-4 rounded-lg text-sm transition-colors border border-mono-700 flex items-center justify-center gap-2 whitespace-nowrap"
-                >
-                  <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-                  </svg>
-                  Download
-                </a>
+                {track.master_audio_path ? (
+                  <>
+                    <audio 
+                      src={`/api/media/stream?type=master&path=${encodeURIComponent(track.master_audio_path)}`} 
+                      controls 
+                      controlsList="nodownload"
+                      class="w-full xl:w-64 h-10 rounded-md outline-none"
+                    ></audio>
+                    
+                    <a 
+                      href={`/api/media/download?path=${encodeURIComponent(track.master_audio_path)}&title=${encodeURIComponent(track.title)}`}
+                      target="_blank"
+                      class="w-full xl:w-auto bg-mono-800 hover:bg-mono-700 text-white font-bold py-2 px-4 rounded-lg text-sm transition-colors border border-mono-700 flex items-center justify-center gap-2 whitespace-nowrap"
+                    >
+                      <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                      </svg>
+                      Download
+                    </a>
+                  </>
+                ) : (
+                  <div class="flex items-center justify-center w-full xl:w-auto p-2 bg-mono-900 border border-mono-800 rounded-lg">
+                    <span class="text-xs text-mono-500 italic font-bold">Audio pending upload</span>
+                  </div>
+                )}
               </div>
             </div>
           ))}

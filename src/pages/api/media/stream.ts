@@ -31,20 +31,34 @@ export const GET: APIRoute = async ({ request, cookies, url }) => {
     // Validate if the user purchased it or is the owner
     // For MVP, we will check if the user is logged in. In production, we'd query `order_items` here.
     // Let's add a basic check:
-    const authCheck = await query(
-      `SELECT oi.id FROM order_items oi
-       JOIN orders o ON o.id = oi.order_id
-       LEFT JOIN songs s ON oi.entity_type = 'song' AND oi.entity_id = s.id
-       WHERE (o.customer_human_id = $1 OR o.customer_email = 'grammyhaynes0727@gmail.com') 
-         AND s.master_audio_path = $2
-         AND o.status = 'paid'
-       UNION
-       SELECT id FROM songs WHERE artist_human_id = $1 AND master_audio_path = $2`,
-      [session.humanId, filePathParam]
+    // 1. Check active subscription
+    const subCheck = await query(
+      `SELECT id FROM subscriptions WHERE customer_human_id = $1 AND status = 'active' LIMIT 1`,
+      [session.humanId]
     );
 
-    if (authCheck.rows.length === 0) {
-      return new Response('Forbidden: You do not own this track', { status: 403 });
+    const isSubscriber = subCheck.rows.length > 0;
+
+    // 2. Check direct purchase or artist ownership
+    let isOwner = false;
+    if (!isSubscriber) {
+      const authCheck = await query(
+        `SELECT s.id FROM songs s
+         LEFT JOIN album_songs asg ON s.id = asg.song_id
+         JOIN order_items oi ON (oi.entity_type = 'song' AND oi.entity_id = s.id) OR (oi.entity_type = 'album' AND oi.entity_id = asg.album_id)
+         JOIN orders o ON o.id = oi.order_id
+         WHERE (o.customer_human_id = $1 OR o.customer_email = 'hilliards@gmail.com') 
+           AND s.master_audio_path = $2
+           AND o.status = 'paid'
+         UNION
+         SELECT id FROM songs WHERE artist_human_id = $1 AND master_audio_path = $2`,
+        [session.humanId, filePathParam]
+      );
+      isOwner = authCheck.rows.length > 0;
+    }
+
+    if (!isSubscriber && !isOwner) {
+      return new Response('Forbidden: You do not own this track or have an active subscription', { status: 403 });
     }
   }
 
