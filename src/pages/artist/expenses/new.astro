@@ -1,0 +1,113 @@
+---
+import { query } from '../../../server/db';
+import '../../../styles/global.css';
+
+// Read session from Astro locals
+// @ts-ignore
+const session = Astro.locals.session;
+
+if (!session?.roles?.includes('artist')) {
+  return Astro.redirect('/login');
+}
+
+// Fetch artist's expense groups so they can attach it
+const groupsResult = await query(`
+  SELECT g.id, g.name 
+  FROM expense_groups g
+  JOIN group_members m ON m.group_id = g.id
+  WHERE m.human_id = $1
+`, [session.humanId]);
+const groups = groupsResult.rows;
+
+// Fetch artist's events to optionally link expense
+// Assuming artists could link generic events. (You can join on artist_events if needed)
+const eventsResult = await query(`
+  SELECT id, title FROM events 
+  ORDER BY start_time DESC LIMIT 20
+`);
+const events = eventsResult.rows;
+---
+
+<turbo-frame id="artist-modal">
+  <div class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-mono-950/80 backdrop-blur-sm">
+    <div class="bg-mono-900 border border-mono-800 rounded-3xl w-full max-w-lg shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+      <div class="p-6 border-b border-mono-800 flex justify-between items-center bg-mono-950/50">
+        <h2 class="text-xl font-black text-mono-50 flex items-center gap-2">
+          <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+          Log Expense
+        </h2>
+        <a href="/artist/dashboard" class="text-mono-500 hover:text-white transition-colors" data-turbo-frame="_top">
+          <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+          </svg>
+        </a>
+      </div>
+
+      <!-- Ensure turbo uses _top target when redirecting from form submission -->
+      <form action="/api/expenses" method="POST" target="_top" class="p-6 flex flex-col gap-5">
+        <!-- Hidden paid_by field -->
+        <input type="hidden" name="paid_by" value={session.humanId} />
+
+        <div>
+          <label class="block text-xs font-bold text-mono-400 uppercase tracking-wider mb-2">Description / Title</label>
+          <input type="text" name="description" placeholder="e.g., Gas for Tour Van, Round of Drinks" required
+            class="w-full bg-mono-950 border border-mono-700 rounded-xl p-3 text-white placeholder-mono-500 focus:outline-none focus:border-green-500 focus:ring-1 focus:ring-green-500 transition-all font-bold" />
+        </div>
+
+        <div class="flex gap-4">
+          <div class="w-1/2">
+            <label class="block text-xs font-bold text-mono-400 uppercase tracking-wider mb-2">Amount ($)</label>
+            <input type="number" name="amount" step="0.01" min="0.01" placeholder="0.00" required
+              class="w-full bg-mono-950 border border-mono-700 rounded-xl p-3 text-white placeholder-mono-500 focus:outline-none focus:border-green-500 focus:ring-1 focus:ring-green-500 transition-all font-bold text-green-400" />
+          </div>
+          <div class="w-1/2">
+            <label class="block text-xs font-bold text-mono-400 uppercase tracking-wider mb-2">Category</label>
+            <select name="category" required
+              class="w-full bg-mono-950 border border-mono-700 rounded-xl p-3 text-white focus:outline-none focus:border-green-500 focus:ring-1 focus:ring-green-500 transition-all">
+              <option value="food">Food & Drink</option>
+              <option value="transportation">Transportation / Gas</option>
+              <option value="parking">Parking</option>
+              <option value="tickets">Tickets / Entry</option>
+              <option value="equipment">Gear / Equipment</option>
+              <option value="misc">Miscellaneous</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="flex gap-4">
+          <div class="w-1/2">
+            <label class="block text-xs font-bold text-mono-400 uppercase tracking-wider mb-2">Split Group</label>
+            <select name="group_id"
+              class="w-full bg-mono-950 border border-mono-700 rounded-xl p-3 text-white focus:outline-none focus:border-green-500 focus:ring-1 focus:ring-green-500 transition-all text-sm">
+              <option value="">-- None --</option>
+              {groups.map((g: any) => (
+                <option value={g.id}>{g.name}</option>
+              ))}
+            </select>
+          </div>
+          <div class="w-1/2">
+            <label class="block text-xs font-bold text-mono-400 uppercase tracking-wider mb-2">Linked Event</label>
+            <select name="event_id"
+              class="w-full bg-mono-950 border border-mono-700 rounded-xl p-3 text-white focus:outline-none focus:border-green-500 focus:ring-1 focus:ring-green-500 transition-all text-sm">
+              <option value="">-- None --</option>
+              {events.map((e: any) => (
+                <option value={e.id}>{e.title}</option>
+              ))}
+            </select>
+          </div>
+        </div>
+
+        <div class="mt-4 pt-4 border-t border-mono-800 flex justify-end gap-3">
+          <a href="/artist/dashboard" data-turbo-frame="_top" class="px-6 py-3 bg-mono-800 text-white rounded-full font-bold hover:bg-mono-700 transition-colors text-sm">
+            Cancel
+          </a>
+          <button type="submit" class="bg-green-500 text-mono-950 font-black px-8 py-3 rounded-full hover:brightness-110 transition-all shadow-[0_0_15px_rgba(74,222,128,0.3)] hover:scale-105 active:scale-95 text-sm">
+            Save Expense
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+</turbo-frame>

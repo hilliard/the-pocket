@@ -1,0 +1,100 @@
+---
+import { query } from '../../../server/db';
+import '../../../styles/global.css';
+
+// Read session from Astro locals
+// @ts-ignore
+const session = Astro.locals.session;
+
+if (!session?.roles?.includes('artist')) {
+  return Astro.redirect('/login');
+}
+
+const expenseId = Astro.params.id;
+
+// Fetch the expense details
+const expenseResult = await query(`
+  SELECT e.*, 
+         g.name as group_name,
+         h.first_name || ' ' || h.last_name as payer_name
+  FROM expenses e
+  LEFT JOIN expense_groups g ON e.group_id = g.id
+  LEFT JOIN humans h ON e.paid_by = h.id
+  WHERE e.id = $1
+`, [expenseId]);
+
+if (expenseResult.rows.length === 0) {
+  return new Response('Expense not found', { status: 404 });
+}
+
+const expense = expenseResult.rows[0];
+
+// Fetch the splits
+const splitsResult = await query(`
+  SELECT s.amount_cents, h.first_name, h.last_name
+  FROM expense_splits s
+  JOIN humans h ON s.human_id = h.id
+  WHERE s.expense_id = $1
+`, [expenseId]);
+
+const splits = splitsResult.rows;
+---
+
+<turbo-frame id="artist-modal">
+  <div class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-mono-950/80 backdrop-blur-sm">
+    <div class="bg-mono-900 border border-mono-800 rounded-3xl w-full max-w-md shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+      <div class="p-6 border-b border-mono-800 flex justify-between items-center bg-mono-950/50">
+        <h2 class="text-xl font-black text-mono-50 flex items-center gap-2">
+          <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+          </svg>
+          Expense Details
+        </h2>
+        <a href="/artist/dashboard" class="text-mono-500 hover:text-white transition-colors" data-turbo-frame="_top">
+          <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+          </svg>
+        </a>
+      </div>
+
+      <div class="p-6 flex flex-col gap-6">
+        <div class="text-center">
+          <p class="text-mono-400 text-sm font-bold uppercase tracking-wider mb-1">{expense.category}</p>
+          <h3 class="text-2xl font-black text-white mb-2">{expense.description || 'Unnamed Expense'}</h3>
+          <span class="text-4xl font-black text-green-400 block">${(expense.amount_cents / 100).toFixed(2)}</span>
+          <p class="text-mono-500 text-sm mt-2">Paid by: <span class="text-mono-100 font-bold">{expense.payer_name || 'You'}</span></p>
+          {expense.group_name && (
+            <p class="text-mono-500 text-sm mt-1">Group: <span class="text-mono-100 font-bold">{expense.group_name}</span></p>
+          )}
+          <p class="text-mono-500 text-xs mt-1">{new Date(expense.created_at).toLocaleString()}</p>
+        </div>
+
+        <div class="border-t border-mono-800 pt-6">
+          <h4 class="text-sm font-bold text-mono-300 uppercase tracking-wider mb-4">Split Breakdown</h4>
+          
+          {splits.length === 0 ? (
+            <div class="bg-mono-950 border border-mono-800 rounded-xl p-4 text-center">
+              <p class="text-mono-400 text-sm">No splits assigned.</p>
+              <p class="text-mono-500 text-xs mt-1">This expense is fully attributed to the payer.</p>
+            </div>
+          ) : (
+            <div class="flex flex-col gap-2">
+              {splits.map((split: any) => (
+                <div class="flex items-center justify-between bg-mono-950 border border-mono-800 rounded-xl p-3">
+                  <span class="font-medium text-mono-100">{split.first_name} {split.last_name}</span>
+                  <span class="font-bold text-green-400">${(split.amount_cents / 100).toFixed(2)}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <div class="mt-2 flex justify-end">
+          <a href="/artist/dashboard" data-turbo-frame="_top" class="px-6 py-3 bg-mono-800 text-white rounded-full font-bold hover:bg-mono-700 transition-colors text-sm w-full text-center">
+            Close
+          </a>
+        </div>
+      </div>
+    </div>
+  </div>
+</turbo-frame>

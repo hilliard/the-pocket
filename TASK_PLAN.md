@@ -39,3 +39,10 @@ Build a deterministic, self-healing multi-tenant musician e-commerce platform us
 ### Phase 5: Additional Features & Services
 - [x] Integrate Stripe billing flows.
 - [x] Integrate Resend for transaction/newsletter emails.
+
+### Phase 6: Expenses and Splitting
+- [x] Define human-centric schema migration for events, activities, expense groups, and expenses.
+- [x] Create server API endpoints (`/api/events`, `/api/activities`, `/api/groups`, `/api/expenses`).
+- [ ] Mock and test API endpoints.
+- [x] Build the UI inside the Artist Dashboard to visualize and manage expenses.
+

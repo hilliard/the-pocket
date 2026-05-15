@@ -106,10 +106,14 @@ if (errorParam === 'invalid_credentials') {
         btn.addEventListener('click', (e) => {
           e.preventDefault();
           const container = btn.closest('.relative');
+          if (!container) return;
+
           const input = container.querySelector('input');
           const eye = btn.querySelector('.eye-icon');
           const eyeOff = btn.querySelector('.eye-off-icon');
           
+          if (!input || !eye || !eyeOff) return;
+
           if (input.type === 'password') {
             input.type = 'text';
             eye.classList.add('hidden');

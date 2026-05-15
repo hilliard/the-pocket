@@ -22,6 +22,8 @@
 - [x] Phase 5: Established singleton server services `src/server/stripe.ts` and `src/server/resend.ts`.
 - [x] Phase 5: Authored architecture SOPs for Checkout and Transactional Email logic.
 - [x] Phase 5: Initialized API routes `POST /api/checkout/session` and `POST /api/email/receipt`.
+- [x] Phase 6: Created migration script `07-add-events-expenses.sql` for group expenses architecture.
+- [x] Phase 6: Implemented base Astro API routes for `/events`, `/activities`, `/groups`, and `/expenses`.
 
 ## Errors & Resolutions
 - *No errors logged currently.*

@@ -9,7 +9,11 @@
     "dev": "astro dev --host 127.0.0.1",
     "build": "astro build",
     "preview": "astro preview",
-    "astro": "astro"
+    "astro": "astro",
+    "db:local:push": "node scripts/migrate.js local",
+    "db:remote:push": "node scripts/migrate.js remote",
+    "health:db:local": "node scripts/health.js local",
+    "health:db:remote": "node scripts/health.js remote"
   },
   "dependencies": {
     "@astrojs/node": "^10.1.0",
